@@ -1,0 +1,27 @@
+# Requirements for the Streamlit deployment path (streamlit_app.py) only.
+#
+# This is intentionally separate from requirements.txt: installing
+# streamlit and fastapi in the same environment causes a hard version
+# conflict on their shared `starlette` dependency, which silently breaks
+# the FastAPI app (app.py) if both end up installed together. If you're
+# deploying streamlit_app.py, point your host at THIS file, not
+# requirements.txt — on Streamlit Community Cloud that's an "Advanced
+# settings" field when you create the app.
+#
+# playwright is deliberately left out here — render_js is not recommended
+# on typical free-tier memory limits, and crawler.py only imports it lazily
+# (inside the crawl() method) when render_js is actually turned on, so it's
+# not needed just to run the rest of the app. If you do want to try
+# render_js on this host anyway, add `playwright==1.47.0` back in and note
+# that Streamlit Cloud won't run `playwright install chromium` for you —
+# that's a build-time step this platform doesn't expose.
+
+httpx==0.27.2
+beautifulsoup4==4.12.3
+lxml==5.3.0
+networkx==3.3
+jinja2==3.1.4
+openpyxl==3.1.5
+anthropic==0.34.2
+streamlit==1.38.0
+pandas==2.2.2

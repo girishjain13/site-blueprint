@@ -67,6 +67,58 @@ right after a run, that's just CDN propagation, not a failure.
 
 ---
 
+## Option C — Streamlit Community Cloud (a different frontend, but free with no card historically required)
+
+This uses a separate entry point — `streamlit_app.py` — built for hosts that
+can't reasonably run a full custom FastAPI+HTML frontend. It reuses every
+bit of the actual audit engine (crawler, analyzers, scoring, exports); only
+the visual layer is simpler, built from Streamlit's own components instead
+of the custom design in `templates/`.
+
+**Important:** `streamlit_app.py` needs its own dependency file,
+`requirements-streamlit.txt` — NOT the main `requirements.txt`. Installing
+Streamlit and FastAPI in the same environment causes a real, silent-until-
+you-hit-it version conflict on a shared dependency (`starlette`) that
+breaks the FastAPI app. Keep these two deployment paths in separate
+environments.
+
+### Setup
+
+1. Push this repo to GitHub (you likely already have this from the earlier
+   GitHub Pages attempt).
+2. Go to **share.streamlit.io**, sign in with your GitHub account (no card
+   required, historically — confirm at signup, since free-tier terms shift).
+3. **New app** → select your repo and the `main` branch → main file path:
+   `streamlit_app.py`.
+4. Under **Advanced settings**, set the requirements file path to
+   `requirements-streamlit.txt` (not the default `requirements.txt`).
+5. In the same Advanced settings, add secrets in TOML format if you want
+   them:
+   ```toml
+   ANTHROPIC_API_KEY = "sk-ant-..."
+   PAGESPEED_API_KEY = "..."
+   ```
+   Both are optional — the app works without them.
+6. Deploy. Your app will be live at a `*.streamlit.app` URL.
+
+### What's different here vs. the FastAPI app
+
+- Visual design is Streamlit's own components (tabs, metrics, dataframes,
+  built-in charts) rather than the custom "Studio" theme — functionally
+  equivalent, just simpler to look at.
+- The internal-link force-directed graph is replaced with a plain sorted
+  table of most-linked-to pages — same underlying data, simpler rendering.
+- `render_js` (Playwright) is exposed but not recommended here — this
+  platform's free tier has tight memory limits, and there's no build step
+  to install Playwright's browser binary the way the Dockerfile does for
+  other hosts. It's left in as an option in case you're on a beefier plan,
+  with a clear warning in the UI.
+- Run history is written to local disk, which is typically ephemeral on
+  free hosting — trend tracking may not survive a redeploy/restart here
+  the way it does when GitHub Actions commits the history file to the repo.
+
+---
+
 ## If you ever get access to a host that runs backend code
 
 The rest of this guide (and the `Dockerfile` in this repo) covers running
