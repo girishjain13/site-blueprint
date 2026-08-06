@@ -36,7 +36,7 @@ _audits: dict[str, dict] = {}
 
 class StartAuditRequest(BaseModel):
     start_url: str
-    max_pages: int = Field(default=150, ge=1, le=MAX_PAGES_HARD_CAP)
+    max_pages: int = Field(default=5000, ge=1, le=MAX_PAGES_HARD_CAP)
     max_depth: int = Field(default=12, ge=1, le=50)
     concurrency: int = Field(default=8, ge=1, le=30)
     respect_robots: bool = True

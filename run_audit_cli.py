@@ -59,7 +59,7 @@ async def main() -> int:
         print("ERROR: START_URL must include http:// or https://", file=sys.stderr)
         return 1
 
-    max_pages = int(os.environ.get("MAX_PAGES", "150"))
+    max_pages = int(os.environ.get("MAX_PAGES", "5000"))
     max_depth = int(os.environ.get("MAX_DEPTH", "12"))
     concurrency = int(os.environ.get("CONCURRENCY", "8"))
     respect_robots = _env_bool("RESPECT_ROBOTS", True)

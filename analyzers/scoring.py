@@ -38,18 +38,25 @@ def score_seo(seo: dict, total_pages: int) -> float:
 
 
 def build_action_plan(ia: dict, content: dict, a11y: dict, seo: dict) -> list[dict]:
-    """Merge all analyzer recommendations into a single prioritized list."""
+    """Merge all analyzer recommendations into a single prioritized list,
+    with rough Impact/Effort sizing — the classic UX-lead prioritization
+    lens for deciding what to actually schedule first. These are directional
+    estimates from the kind of fix each finding usually requires, not a
+    measurement of this specific codebase.
+    """
     items = []
     if ia["orphan_page_count"]:
-        items.append({"priority": "high", "area": "IA", "action": f"Fix {ia['orphan_page_count']} orphan page(s) with no internal inbound links."})
+        items.append({"priority": "high", "area": "IA", "impact": "High", "effort": "Medium",
+                      "action": f"Fix {ia['orphan_page_count']} orphan page(s) with no internal inbound links."})
     if ia["pages_over_3_clicks"]:
-        items.append({"priority": "medium", "area": "IA", "action": f"Reduce click depth for {ia['pages_over_3_clicks']} page(s) currently more than 3 clicks from the homepage."})
+        items.append({"priority": "medium", "area": "IA", "impact": "Medium", "effort": "Medium",
+                      "action": f"Reduce click depth for {ia['pages_over_3_clicks']} page(s) currently more than 3 clicks from the homepage."})
     for rec in content["recommendations"]:
-        items.append({"priority": "medium", "area": "Content", "action": rec})
+        items.append({"priority": "medium", "area": "Content", "impact": "Medium", "effort": "Medium", "action": rec})
     for rec in a11y["recommendations"]:
-        items.append({"priority": "high", "area": "Accessibility", "action": rec})
+        items.append({"priority": "high", "area": "Accessibility", "impact": "High", "effort": "Low", "action": rec})
     for rec in seo["recommendations"]:
-        items.append({"priority": "medium", "area": "SEO", "action": rec})
+        items.append({"priority": "medium", "area": "SEO", "impact": "Medium", "effort": "Low", "action": rec})
 
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda i: order.get(i["priority"], 3))

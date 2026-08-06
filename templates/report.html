@@ -49,6 +49,15 @@
   {% endif %}
 
   <div class="section">
+    <div class="section-head"><h2>UX Lead's Assessment</h2><div class="desc">A narrative read of the findings below, the way a senior UX lead would actually frame them in a review — not just restated numbers.</div></div>
+    <div class="card">
+      {% for para in data.lead_assessment.paragraphs %}
+      <p style="margin:{{ '0 0 14px' if not loop.last else '0' }};">{{ para }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-head"><h2>Scorecard</h2><div class="desc">Each score is 0–100, where higher is healthier. Hover the label for what it's actually measuring.</div></div>
     <div class="score-grid">
       <div class="score-card band-{{ data.scoring.ux_maturity_band.replace(' ', '-') }}">
@@ -120,13 +129,20 @@
   </div>
 
   <div class="section">
-    <div class="section-head"><h2>Prioritized Action Plan</h2><div class="desc">Every finding above, ranked so you know where to start.</div></div>
+    <div class="section-head"><h2>Prioritized Action Plan</h2><div class="desc">Every finding above, ranked — with a rough Impact/Effort read on each, the way you'd actually decide what goes into the next sprint versus the backlog.</div></div>
+    <div class="chart-grid" style="margin-bottom:14px;">
+      <div class="chart-box" style="grid-column: 1 / -1;">
+        <h3>Impact vs. Effort</h3>
+        <canvas id="chart-impact-effort" height="140"></canvas>
+      </div>
+    </div>
     <div class="card">
       {% for item in data.scoring.action_plan %}
       <div class="action-item">
         <span class="pill {{ item.priority }}">{{ item.priority }}</span>
         <span class="action-area">{{ item.area }}</span>
-        <span>{{ item.action }}</span>
+        <span style="flex:1;">{{ item.action }}</span>
+        <span class="small-dim" style="white-space:nowrap;">Impact: {{ item.impact }} · Effort: {{ item.effort }}</span>
       </div>
       {% else %}
       <p class="small-dim">No significant issues detected — nice work.</p>
@@ -303,6 +319,31 @@ new Chart(document.getElementById('chart-keywords'), {
     datasets: [{ data: kw.map(k => k.count), backgroundColor: '#4F7A5C', borderRadius: 4 }]
   },
   options: { indexAxis: 'y', plugins: { legend: { display:false } }, scales: { x: { beginAtZero:true } } }
+});
+
+const EFFORT_X = {Low: 1, Medium: 2, High: 3};
+const IMPACT_Y = {Low: 1, Medium: 2, High: 3};
+const PRIORITY_COLOR = {high: '#B23A34', medium: '#B8862B', low: '#4F7A5C'};
+const actionPlan = auditData.scoring.action_plan || [];
+new Chart(document.getElementById('chart-impact-effort'), {
+  type: 'scatter',
+  data: {
+    datasets: [{
+      data: actionPlan.map(a => ({ x: EFFORT_X[a.effort] || 2, y: IMPACT_Y[a.impact] || 2 })),
+      backgroundColor: actionPlan.map(a => PRIORITY_COLOR[a.priority] || '#8B8378'),
+      pointRadius: 8, pointHoverRadius: 10,
+    }]
+  },
+  options: {
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (ctx) => actionPlan[ctx.dataIndex].action.slice(0, 70) } },
+    },
+    scales: {
+      x: { min: 0.5, max: 3.5, ticks: { stepSize: 1, callback: (v) => ({1:'Low effort',2:'Medium effort',3:'High effort'})[v] || '' } },
+      y: { min: 0.5, max: 3.5, ticks: { stepSize: 1, callback: (v) => ({1:'Low impact',2:'Medium impact',3:'High impact'})[v] || '' } },
+    },
+  }
 });
 
 const taxonomy = auditData.ia.taxonomy;

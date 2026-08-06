@@ -12,7 +12,7 @@ on:
       max_pages:
         description: "Max pages to crawl (cap 5000)"
         required: false
-        default: "150"
+        default: "5000"
       max_depth:
         description: "Max crawl depth"
         required: false

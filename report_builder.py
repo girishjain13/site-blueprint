@@ -139,16 +139,16 @@ def export_xlsx(audit_data: dict) -> bytes:
 
     # ---- Action Plan ----
     ws3 = wb.create_sheet("Action Plan")
-    ws3.append(["Priority", "Area", "Action"])
+    ws3.append(["Priority", "Impact", "Effort", "Area", "Action"])
     for item in audit_data["scoring"]["action_plan"]:
-        ws3.append([item["priority"].capitalize(), item["area"], item["action"]])
+        ws3.append([item["priority"].capitalize(), item.get("impact", ""), item.get("effort", ""), item["area"], item["action"]])
         ws3.cell(row=ws3.max_row, column=1).fill = PRIORITY_FILLS.get(item["priority"], PatternFill())
     style_header(ws3)
     for row in ws3.iter_rows(min_row=2):
-        row[2].alignment = WRAP
-    autosize(ws3, [12, 16, 80])
+        row[4].alignment = WRAP
+    autosize(ws3, [12, 11, 11, 16, 76])
     if ws3.max_row > 1:
-        add_table(ws3, "ActionPlan", ws3.max_row - 1, 3)
+        add_table(ws3, "ActionPlan", ws3.max_row - 1, 5)
 
     # ---- Keywords ----
     ws4 = wb.create_sheet("Keywords")

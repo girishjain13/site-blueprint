@@ -10,7 +10,7 @@ from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary
 from crawler import AsyncCrawler, CrawlConfig
 from models import AuditStatus, CrawlProgress
-from ux_copy import build_plain_summary
+from ux_copy import build_lead_assessment, build_plain_summary
 
 
 async def run_audit(
@@ -36,6 +36,10 @@ async def run_audit(
     )
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
+    lead_assessment = build_lead_assessment(
+        score_results, ia_results, content_results, a11y_results, seo_results,
+        integration_results, keyword_results, len(pages),
+    )
 
     progress.status = AuditStatus.DONE
     progress.finished_at = datetime.now(timezone.utc)
@@ -85,6 +89,7 @@ async def run_audit(
         "heuristics": heuristics_results,
         "heuristics_summary": heuristic_summary(heuristics_results),
         "plain_summary": plain_summary,
+        "lead_assessment": lead_assessment,
     }
 
     if with_ai_summary:
