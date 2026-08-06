@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
-from analyzers import accessibility, content, ia, keywords, scoring, seo
+from analyzers import accessibility, content, ia, integrations, keywords, scoring, seo
 from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary
 from crawler import AsyncCrawler, CrawlConfig
@@ -30,6 +30,9 @@ async def run_audit(
     score_results = scoring.run_scoring(ia_results, content_results, a11y_results, seo_results, len(pages))
     keyword_results = keywords.run_keyword_analysis(
         crawler.global_word_counts, crawler.global_bigram_counts, crawler.global_doc_freq, len(pages)
+    )
+    integration_results = integrations.run_integration_analysis(
+        crawler.integration_hits, crawler.unrecognized_script_domains, crawler.all_external_scripts, pages, len(pages)
     )
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
@@ -65,6 +68,8 @@ async def run_audit(
                 "internal_links_out_count": len(rec.internal_links_out),
                 "reading_time_seconds": rec.reading_time_seconds,
                 "rendered_height_estimate": rec.rendered_height_estimate,
+                "script_count": rec.script_count,
+                "external_script_count": rec.external_script_count,
                 "error": rec.error,
             }
             for url, rec in pages.items()
@@ -76,6 +81,7 @@ async def run_audit(
         "seo": seo_results,
         "scoring": score_results,
         "keywords": keyword_results,
+        "integrations": integration_results,
         "heuristics": heuristics_results,
         "heuristics_summary": heuristic_summary(heuristics_results),
         "plain_summary": plain_summary,

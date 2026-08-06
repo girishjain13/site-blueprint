@@ -35,7 +35,8 @@ def export_csv(audit_data: dict) -> bytes:
     fieldnames = [
         "url", "status_code", "title", "word_count", "path_depth", "click_depth",
         "is_thin_content", "is_duplicate_of", "images_total", "images_missing_alt",
-        "has_schema_org", "canonical", "internal_links_out_count", "error",
+        "has_schema_org", "canonical", "internal_links_out_count", "script_count",
+        "external_script_count", "error",
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
@@ -167,20 +168,40 @@ def export_xlsx(audit_data: dict) -> bytes:
     ws4.column_dimensions["F"].width = 26
     ws4.column_dimensions["G"].width = 14
 
+    # ---- Integrations ----
+    ws_int = wb.create_sheet("Integrations")
+    ws_int.append(["Integration", "Category", "Pages Found On", "% of Pages"])
+    for d in audit_data.get("integrations", {}).get("detected", []):
+        ws_int.append([d["name"], d["category"], d["pages_found_on"], d["pct_of_pages"] / 100])
+        ws_int.cell(row=ws_int.max_row, column=4).number_format = "0.0%"
+    style_header(ws_int)
+    autosize(ws_int, [28, 22, 16, 12])
+    ws_int["F1"] = "Other scripts (unrecognized)"
+    ws_int["F1"].font = Font(bold=True)
+    ws_int["G1"] = "References"
+    ws_int["G1"].font = Font(bold=True)
+    for i, s in enumerate(audit_data.get("integrations", {}).get("other_scripts", []), start=2):
+        ws_int.cell(row=i, column=6, value=s["domain"])
+        ws_int.cell(row=i, column=7, value=s["reference_count"])
+    ws_int.column_dimensions["F"].width = 34
+    ws_int.column_dimensions["G"].width = 14
+
     # ---- Page Inventory ----
     ws5 = wb.create_sheet("Page Inventory")
     fieldnames = [
         "url", "status_code", "title", "word_count", "path_depth", "click_depth",
         "is_thin_content", "is_duplicate_of", "images_total", "images_missing_alt",
-        "has_schema_org", "canonical", "internal_links_out_count", "error",
+        "has_schema_org", "canonical", "internal_links_out_count", "script_count",
+        "external_script_count", "error",
     ]
     headers5 = ["URL", "Status", "Title", "Words", "Path Depth", "Click Depth", "Thin?",
-                "Duplicate Of", "Images", "Missing Alt", "Has Schema?", "Canonical", "Internal Links Out", "Error"]
+                "Duplicate Of", "Images", "Missing Alt", "Has Schema?", "Canonical", "Internal Links Out",
+                "Scripts", "External Scripts", "Error"]
     ws5.append(headers5)
     for row in audit_data["pages"].values():
         ws5.append([row.get(f) for f in fieldnames])
     style_header(ws5)
-    autosize(ws5, [46, 9, 38, 8, 11, 11, 7, 30, 8, 11, 11, 30, 16, 16])
+    autosize(ws5, [46, 9, 38, 8, 11, 11, 7, 30, 8, 11, 11, 30, 16, 9, 14, 16])
     if ws5.max_row > 1:
         add_table(ws5, "PageInventory", ws5.max_row - 1, len(headers5))
 

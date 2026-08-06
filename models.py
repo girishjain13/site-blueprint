@@ -44,6 +44,8 @@ class PageRecord:
     forms_total: int = 0
     inputs_missing_label: int = 0
     aria_landmark_count: int = 0
+    script_count: int = 0
+    external_script_count: int = 0
 
     internal_links_out: list = field(default_factory=list)
     external_links_out_count: int = 0

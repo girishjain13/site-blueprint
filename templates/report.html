@@ -158,6 +158,51 @@
   </div>
 
   <div class="section">
+    <div class="section-head"><h2>Integrations &amp; Third-Party Scripts</h2><div class="desc">What's actually loading on the site — analytics, tag managers, chat widgets, and anything else pulled in from an external script. Matched against a registry of known loader URLs; anything not recognized is still listed under "Other scripts found," it's just not identified by name.</div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.integrations.unique_external_scripts }}</div><div class="l">Unique external scripts</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.detected|length }}</div><div class="l">Recognized integrations</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.avg_scripts_per_page }}</div><div class="l">Avg scripts / page</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.heavy_script_pages|length }}</div><div class="l">Pages over {{ data.integrations.heavy_script_threshold }} scripts</div></div>
+    </div>
+    <div class="chart-grid" style="margin-top:16px;">
+      <div class="chart-box">
+        <h3>Recognized integrations</h3>
+        {% if data.integrations.detected %}
+        <table>
+          <thead><tr><th>Integration</th><th>Category</th><th>Found on</th></tr></thead>
+          <tbody>
+            {% for d in data.integrations.detected %}
+            <tr><td>{{ d.name }}</td><td class="small-dim">{{ d.category }}</td><td>{{ d.pages_found_on }} pages ({{ d.pct_of_pages }}%)</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="small-dim">No recognized third-party integrations found in the registry this tool checks against.</p>
+        {% endif %}
+      </div>
+      <div class="chart-box">
+        <h3>Other scripts found (unrecognized)</h3>
+        {% if data.integrations.other_scripts %}
+        <table>
+          <thead><tr><th>Domain</th><th>References</th></tr></thead>
+          <tbody>
+            {% for s in data.integrations.other_scripts[:12] %}
+            <tr><td class="url-cell">{{ s.domain }}</td><td>{{ s.reference_count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="small-dim">Every external script found matched something in the known-integrations registry.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if data.integrations.heavy_script_pages %}
+    <p class="small-dim" style="margin-top:14px;">{{ data.integrations.heavy_script_pages|length }} page(s) load more than {{ data.integrations.heavy_script_threshold }} external scripts — that's usually a sign of accumulated, possibly-unused marketing/analytics tags worth auditing for page-speed's sake.</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
     <div class="section-head"><h2>Site Structure</h2><div class="desc">How the site is organized, and how many clicks it takes to reach each page from the homepage.</div></div>
     <div class="chart-grid">
       <div class="chart-box">

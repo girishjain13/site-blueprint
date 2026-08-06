@@ -14,6 +14,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from analyzers.integrations import match_integrations
 from analyzers.keywords import bigrams, tokenize
 from models import AuditStatus, CrawlProgress, PageRecord
 from robots import RobotsInfo
@@ -83,6 +84,12 @@ class AsyncCrawler:
         self.global_word_counts: Counter = Counter()
         self.global_bigram_counts: Counter = Counter()
         self.global_doc_freq: Counter = Counter()
+        # third-party integration / script inventory, built the same way —
+        # incrementally per page, so we never need to hold script content
+        # around after a page is parsed
+        self.integration_hits: dict = {}  # integration name -> set of page urls
+        self.unrecognized_script_domains: Counter = Counter()
+        self.all_external_scripts: set = set()
 
     async def crawl(self, on_progress: Optional[Callable[[], Awaitable[None]]] = None):
         cfg = self.config
@@ -292,3 +299,26 @@ class AsyncCrawler:
             else:
                 external += 1
         record.external_links_out_count = external
+
+        # --- scripts / third-party integrations ---
+        scripts = soup.find_all("script")
+        record.script_count = len(scripts)
+        ext_count = 0
+        for s in scripts:
+            src = s.get("src")
+            if src:
+                ext_count += 1
+                abs_src = urljoin(base, src)
+                self.all_external_scripts.add(abs_src)
+                matched = match_integrations(abs_src)
+                if matched:
+                    for name in matched:
+                        self.integration_hits.setdefault(name, set()).add(record.url)
+                else:
+                    self.unrecognized_script_domains[urlparse(abs_src).netloc] += 1
+            else:
+                txt = s.string or ""
+                if txt.strip():
+                    for name in match_integrations("", txt):
+                        self.integration_hits.setdefault(name, set()).add(record.url)
+        record.external_script_count = ext_count
