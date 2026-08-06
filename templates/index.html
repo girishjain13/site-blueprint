@@ -2,29 +2,24 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Site Blueprint — Enterprise IA &amp; UX Audit</title>
+<title>UX &amp; IA Audit Tool</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-<div class="titleblock">
-  <div class="tb-project">
-    SITE BLUEPRINT
-    <small>IA / UX / Content / Accessibility / SEO Audit</small>
-  </div>
-  <div class="spacer"></div>
-  <div class="tb-field"><label>Drawn</label><span class="val" id="tb-date"></span></div>
-  <div class="tb-field"><label>Sheet</label><span class="val">01 — Setup</span></div>
+<div class="masthead">
+  <div class="kicker">New Audit</div>
+  <h1>UX &amp; Information Architecture Audit</h1>
+  <div class="sub">Crawl a site and get back a heuristic evaluation — scored, prioritized, and organized the way a design review reads.</div>
 </div>
 
 <div class="wrap">
 
-  <div class="sheet">
-    <div class="sheet-head"><h2>New Audit Run</h2><span class="sheet-num">§1</span></div>
-    <div class="sheet-body">
+  <div class="section">
+    <div class="card">
       <form id="audit-form">
         <div class="field">
           <label class="field-label">Target URL</label>
@@ -44,25 +39,25 @@
             <input type="number" id="max_depth" value="12" min="1" max="50">
           </div>
         </div>
-        <div class="field-row" style="margin-bottom:16px;">
+        <div class="field-row" style="margin-bottom:20px;">
           <label class="checkline"><input type="checkbox" id="respect_robots" checked> Respect robots.txt</label>
           <label class="checkline"><input type="checkbox" id="use_sitemap" checked> Seed from sitemap.xml</label>
           <label class="checkline"><input type="checkbox" id="include_subdomains"> Include subdomains</label>
         </div>
-        <button class="btn" type="submit" id="start-btn">Start Crawl →</button>
+        <button class="btn" type="submit" id="start-btn">Start Audit →</button>
       </form>
-      <p class="small-dim" style="margin-top:14px;">
-        Crawls static HTML only (no JS rendering). Respects robots.txt and rate-limits requests via bounded concurrency.
+      <p class="small-dim" style="margin-top:16px;">
+        Crawls static HTML only (no JS rendering). Respects robots.txt and rate-limits requests.
         Only audit sites you own or have permission to crawl.
       </p>
     </div>
   </div>
 
-  <div class="sheet" id="progress-sheet" style="display:none;">
-    <div class="sheet-head"><h2>Crawl Progress</h2><span class="sheet-num" id="status-badge-num">§2</span></div>
-    <div class="sheet-body">
+  <div class="section" id="progress-section" style="display:none;">
+    <div class="section-head"><h2>Crawl in progress</h2></div>
+    <div class="card">
       <span class="badge-status" id="status-badge">QUEUED</span>
-      <div class="progress-outer" style="margin-top:14px;">
+      <div class="progress-outer" style="margin-top:16px;">
         <div class="progress-inner" id="progress-bar" style="width:0%;"></div>
       </div>
       <div class="stat-row">
@@ -71,10 +66,10 @@
         <div class="stat"><div class="v" id="stat-errors">0</div><div class="l">Errors</div></div>
         <div class="stat"><div class="v" id="stat-eta">—</div><div class="l">ETA</div></div>
       </div>
-      <div class="field-label" style="margin-bottom:6px;">Current URL</div>
+      <label class="field-label">Current URL</label>
       <div class="small-dim" id="current-url" style="font-family: var(--font-mono); margin-bottom: 14px;">—</div>
       <div class="log-box" id="log-box"></div>
-      <div style="margin-top:16px;">
+      <div style="margin-top:18px;">
         <a class="btn" id="view-report-btn" style="display:none;" href="#">View Report →</a>
       </div>
     </div>
@@ -83,10 +78,8 @@
 </div>
 
 <script>
-document.getElementById('tb-date').textContent = new Date().toISOString().slice(0,10);
-
 const form = document.getElementById('audit-form');
-const progressSheet = document.getElementById('progress-sheet');
+const progressSection = document.getElementById('progress-section');
 let pollTimer = null;
 
 form.addEventListener('submit', async (e) => {
@@ -112,8 +105,8 @@ form.addEventListener('submit', async (e) => {
     return;
   }
   const {audit_id} = await resp.json();
-  progressSheet.style.display = 'block';
-  progressSheet.scrollIntoView({behavior:'smooth'});
+  progressSection.style.display = 'block';
+  progressSection.scrollIntoView({behavior:'smooth'});
   pollStatus(audit_id);
 });
 
@@ -138,7 +131,6 @@ function pollStatus(auditId) {
       const btn = document.getElementById('view-report-btn');
       btn.href = `/api/audits/${auditId}/report`;
       btn.style.display = 'inline-block';
-      btn.textContent = 'View Report →';
       window.location = `/api/audits/${auditId}/report`;
     } else if (s.status === 'error') {
       clearInterval(pollTimer);

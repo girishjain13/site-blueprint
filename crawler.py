@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -14,6 +14,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from analyzers.keywords import bigrams, tokenize
 from models import AuditStatus, CrawlProgress, PageRecord
 from robots import RobotsInfo
 
@@ -77,6 +78,11 @@ class AsyncCrawler:
         self.edges: list[tuple[str, str]] = []  # (from_url, to_url) internal links
         self._seen: set[str] = set()
         self._root_netloc = urlparse(config.start_url).netloc
+        # site-wide keyword/phrase counters, built incrementally per page
+        # (see analyzers/keywords.py) rather than re-scanning stored text later
+        self.global_word_counts: Counter = Counter()
+        self.global_bigram_counts: Counter = Counter()
+        self.global_doc_freq: Counter = Counter()
 
     async def crawl(self, on_progress: Optional[Callable[[], Awaitable[None]]] = None):
         cfg = self.config
@@ -235,6 +241,13 @@ class AsyncCrawler:
         record.reading_time_seconds = int(len(words) / 3.5)  # ~200 wpm
         record.text_hash = hashlib.sha1(" ".join(words).encode("utf-8", "ignore")).hexdigest()
         record.is_thin_content = record.word_count < 150
+
+        # site-wide keyword/phrase tallies
+        tokens = tokenize(text)
+        if tokens:
+            self.global_word_counts.update(tokens)
+            self.global_doc_freq.update(set(tokens))
+            self.global_bigram_counts.update(bigrams(tokens))
 
         # scroll-depth proxy: estimate rendered height from block-level element count
         block_tags = soup.find_all(["p", "div", "section", "article", "li", "img", "h1", "h2", "h3"])

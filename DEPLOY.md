@@ -25,36 +25,45 @@ trigger and the result sits as static files until you run it again.
    `ANTHROPIC_API_KEY`. Skip this and the report still works, just without
    that section.
 
-### Running an audit
+### Running an audit — two ways
 
-1. Go to the **Actions** tab → **Run audit and publish to GitHub Pages** →
-   **Run workflow**.
-2. Fill in `start_url` (must include `http://` or `https://`) and adjust
-   `max_pages` / `max_depth` / `concurrency` if you want — defaults are
-   fine for a first run.
-3. Watch the run's logs for live crawl progress (this replaces the
-   in-browser live dashboard, since there's no server to poll here).
-4. When it finishes, your report is live at
-   `https://<your-username>.github.io/<repo-name>/` — same page updates in
-   place every time you re-run the workflow with a new target.
+**From the published page itself (recommended):** open
+`https://<your-username>.github.io/<repo-name>/` — that's a persistent
+launcher page with a URL box right on it. Paste a GitHub personal access
+token (the page explains how to create one, scoped to just this repo)
+and a target URL, click **Run Audit**, and the page will trigger the
+workflow and show you live status until it's done, then link straight to
+the report. Behind the scenes it's calling the same GitHub Actions
+workflow — this page just automates clicking through the Actions tab for
+you, using GitHub's API from your browser.
 
-That's the whole loop: **Actions tab → fill in a URL → Run workflow → open
-the Pages URL.** Nothing installed, nothing running on your machine, and
-nothing kept running in the cloud between runs either — it only spends
-compute while a workflow is actively executing, which is well inside
-GitHub's free minutes for a personal repo.
+**From the Actions tab (no token needed):** **Actions** → **"Run audit
+and publish to GitHub Pages"** → **Run workflow** → fill in `start_url` →
+run. Use this if you'd rather not paste a token anywhere, or you're
+scripting/automating audits yourself.
 
-### What's different from the live app in this mode
+Either way, when it finishes, the report is at
+`https://<your-username>.github.io/<repo-name>/report.html` (the launcher
+page links to it automatically). GitHub Pages can take a minute or two to
+actually publish after the workflow finishes — if the report looks stale
+right after a run, that's just CDN propagation, not a failure.
 
-- No live crawl dashboard — progress shows as plain log lines in the
-  workflow run instead.
-- No persistent "start a new audit from a form on the page" — you
-  trigger runs from the Actions tab, not from the published site itself
-  (the published site is static; it can't accept a form submission).
+### What's different from the live FastAPI app in this mode
+
+- The in-page "Run Audit" button on the launcher calls the GitHub API
+  directly from your browser (via `fetch`) rather than talking to a
+  server this project runs — there is no server, by definition, on a
+  static host. This means starting a run needs a personal access token
+  (typed into the page, sent straight to `api.github.com`, never written
+  to the repo or stored anywhere unless you tick "remember"). The live
+  FastAPI app doesn't need this since it has its own backend to talk to.
+- Progress during a run is polled from GitHub's API rather than pushed
+  from a live server, so updates land every few seconds rather than
+  instantly.
 - Everything else — the crawler, every analyzer, the scoring, the report
-  itself (charts, hierarchy tree, link graph, page inventory, action plan)
-  — is identical code, just run by `run_audit_cli.py` instead of the
-  FastAPI app.
+  itself (charts, hierarchy tree, link graph, page inventory, action plan,
+  keyword frequency) — is identical code, just run by `run_audit_cli.py`
+  instead of the FastAPI app.
 
 ---
 

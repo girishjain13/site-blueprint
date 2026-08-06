@@ -5,10 +5,12 @@ import time
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
-from analyzers import accessibility, content, ia, scoring, seo
+from analyzers import accessibility, content, ia, keywords, scoring, seo
+from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary
 from crawler import AsyncCrawler, CrawlConfig
 from models import AuditStatus, CrawlProgress
+from ux_copy import build_plain_summary
 
 
 async def run_audit(
@@ -26,6 +28,11 @@ async def run_audit(
     a11y_results = accessibility.run_accessibility_analysis(pages)
     seo_results = seo.run_seo_analysis(pages)
     score_results = scoring.run_scoring(ia_results, content_results, a11y_results, seo_results, len(pages))
+    keyword_results = keywords.run_keyword_analysis(
+        crawler.global_word_counts, crawler.global_bigram_counts, crawler.global_doc_freq, len(pages)
+    )
+    heuristics_results = classify_into_heuristics(score_results["action_plan"])
+    plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
 
     progress.status = AuditStatus.DONE
     progress.finished_at = datetime.now(timezone.utc)
@@ -68,6 +75,10 @@ async def run_audit(
         "accessibility": a11y_results,
         "seo": seo_results,
         "scoring": score_results,
+        "keywords": keyword_results,
+        "heuristics": heuristics_results,
+        "heuristics_summary": heuristic_summary(heuristics_results),
+        "plain_summary": plain_summary,
     }
 
     if with_ai_summary:

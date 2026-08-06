@@ -112,16 +112,26 @@ async def main() -> int:
     html = html.replace("/api/audits/latest/export/json", "exports/audit.json")
     html = html.replace("/api/audits/latest/export/csv", "exports/audit.csv")
     html = html.replace("/api/audits/latest/export/xlsx", "exports/audit.xlsx")
-    (OUT_DIR / "index.html").write_text(html, encoding="utf-8")
+    # the report lives at report.html, not index.html — index.html is the
+    # persistent launcher (see below), which a run must never overwrite.
+    (OUT_DIR / "report.html").write_text(html, encoding="utf-8")
 
     (EXPORTS_DIR / "audit.json").write_bytes(export_json(audit_data))
     (EXPORTS_DIR / "audit.csv").write_bytes(export_csv(audit_data))
     (EXPORTS_DIR / "audit.xlsx").write_bytes(export_xlsx(audit_data))
 
+    # Regenerate the launcher page too. It's static/audit-independent, but
+    # docs/ isn't committed to the repo (see .gitignore) — it's rebuilt
+    # fresh by every workflow run, so this has to happen every run to
+    # exist at all, not just once.
+    launcher_html = (Path(__file__).parent / "templates" / "launcher.html").read_text(encoding="utf-8")
+    launcher_html = launcher_html.replace("{{ inline_css }}", style_css)
+    (OUT_DIR / "index.html").write_text(launcher_html, encoding="utf-8")
+
     print(f"[audit] done — {audit_data['meta']['pages_crawled']} pages, "
           f"UX maturity {audit_data['scoring']['ux_maturity_score']} "
           f"({audit_data['scoring']['ux_maturity_band']})", flush=True)
-    print(f"[audit] wrote {OUT_DIR}/index.html", flush=True)
+    print(f"[audit] wrote {OUT_DIR}/report.html and refreshed {OUT_DIR}/index.html", flush=True)
     return 0
 
 
