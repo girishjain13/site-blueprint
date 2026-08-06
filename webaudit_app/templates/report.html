@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site Blueprint Report — {{ data.meta.start_url }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  @media print {
+    .no-print { display:none !important; }
+    body { background: white; color: black; }
+  }
+</style>
+</head>
+<body>
+
+<div class="titleblock">
+  <div class="tb-project">
+    SITE BLUEPRINT
+    <small>Audit Report</small>
+  </div>
+  <div class="spacer"></div>
+  <div class="tb-field"><label>Target</label><span class="val" style="font-family:var(--font-mono); font-size:12px;">{{ data.meta.start_url }}</span></div>
+  <div class="tb-field"><label>Pages</label><span class="val">{{ data.meta.pages_crawled }}</span></div>
+  <div class="tb-field"><label>Drawn</label><span class="val">{{ data.meta.finished_at[:10] }}</span></div>
+  <div class="tb-field no-print"><label>Exports</label>
+    <span class="val">
+      <a href="/api/audits/{{ data.audit_id }}/export/json">JSON</a> ·
+      <a href="/api/audits/{{ data.audit_id }}/export/csv">CSV</a> ·
+      <a href="/api/audits/{{ data.audit_id }}/export/xlsx">XLSX</a> ·
+      <a href="#" onclick="window.print(); return false;">PDF</a>
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  {% if data.ai_summary %}
+  <div class="sheet">
+    <div class="sheet-head"><h2>Executive Summary</h2><span class="sheet-num">§0 — AI-Generated</span></div>
+    <div class="sheet-body"><div class="ai-note">{{ data.ai_summary }}</div></div>
+  </div>
+  {% endif %}
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>UX Maturity Scorecard</h2><span class="sheet-num">§1</span></div>
+    <div class="sheet-body">
+      <div class="score-grid">
+        <div class="score-card band-{{ data.scoring.ux_maturity_band.replace(' ', '-') }}">
+          <div class="num">{{ data.scoring.ux_maturity_score }}</div>
+          <div class="label">UX Maturity ({{ data.scoring.ux_maturity_band }})</div>
+        </div>
+        <div class="score-card"><div class="num">{{ data.scoring.ia_health_score }}</div><div class="label">IA Health</div></div>
+        <div class="score-card"><div class="num">{{ data.scoring.content_quality_score }}</div><div class="label">Content Quality</div></div>
+        <div class="score-card"><div class="num">{{ data.scoring.accessibility_score }}</div><div class="label">Accessibility</div></div>
+        <div class="score-card"><div class="num">{{ data.scoring.seo_score }}</div><div class="label">SEO / Metadata</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Crawl Overview</h2><span class="sheet-num">§2</span></div>
+    <div class="sheet-body">
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h3>HTTP Status Breakdown</h3>
+          <canvas id="chart-status" height="180"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>URL Path Depth Distribution</h3>
+          <canvas id="chart-depth" height="180"></canvas>
+        </div>
+      </div>
+      <div class="stat-row" style="margin-top:20px;">
+        <div class="stat"><div class="v">{{ data.meta.pages_crawled }}</div><div class="l">Pages Crawled</div></div>
+        <div class="stat"><div class="v">{{ data.ia.orphan_page_count }}</div><div class="l">Orphan Pages</div></div>
+        <div class="stat"><div class="v">{{ data.ia.max_click_depth }}</div><div class="l">Max Click Depth</div></div>
+        <div class="stat"><div class="v">{{ data.meta.elapsed_seconds }}s</div><div class="l">Crawl Time</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Information Architecture — Site Hierarchy</h2><span class="sheet-num">§3</span></div>
+    <div class="sheet-body">
+      <p class="small-dim">Top-level sections by page count (taxonomy proxy from URL structure). Tree reflects crawled URL paths.</p>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h3>Pages per Top-Level Section</h3>
+          <canvas id="chart-taxonomy" height="220"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>URL Hierarchy Tree</h3>
+          <div class="tree" id="hierarchy-tree" style="max-height:260px; overflow-y:auto;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Internal Linking Graph</h2><span class="sheet-num">§4</span></div>
+    <div class="sheet-body">
+      <p class="small-dim">Force-directed map of internal links (capped at {{ graph_cap }} nodes for legibility). Node size ≈ inbound links.</p>
+      <canvas id="link-graph" width="1100" height="480" style="width:100%; max-width:100%; border:1px solid var(--grid-line-major); background: rgba(0,0,0,0.15); cursor: grab;"></canvas>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Content Quality &amp; Accessibility</h2><span class="sheet-num">§5</span></div>
+    <div class="sheet-body">
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h3>Content Signals</h3>
+          <table>
+            <tr><td>Average word count</td><td>{{ data.content.word_count_avg }}</td></tr>
+            <tr><td>Thin content pages (&lt;150 words)</td><td>{{ data.content.thin_content_count }}</td></tr>
+            <tr><td>Duplicate content pages</td><td>{{ data.content.duplicate_content_page_count }}</td></tr>
+            <tr><td>Pages with heading-order issues</td><td>{{ data.content.heading_issues|length }}</td></tr>
+            <tr><td>Image alt-text coverage</td><td>{{ data.content.image_alt_coverage_pct }}%</td></tr>
+          </table>
+        </div>
+        <div class="chart-box">
+          <h3>Accessibility Signals</h3>
+          <table>
+            <tr><td>Pages with ≥1 issue</td><td>{{ data.accessibility.pages_with_issues }} / {{ data.accessibility.pages_analyzed }}</td></tr>
+            <tr><td>Images missing alt text</td><td>{{ data.accessibility.images_missing_alt }} / {{ data.accessibility.images_total }}</td></tr>
+            <tr><td>Form fields missing labels</td><td>{{ data.accessibility.inputs_missing_label }}</td></tr>
+            <tr><td>Pages missing lang attribute</td><td>{{ data.accessibility.pages_missing_lang|length }}</td></tr>
+            <tr><td>Pages with no ARIA landmarks</td><td>{{ data.accessibility.pages_no_landmarks|length }}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>SEO &amp; Metadata</h2><span class="sheet-num">§6</span></div>
+    <div class="sheet-body">
+      <div class="stat-row">
+        <div class="stat"><div class="v">{{ data.seo.title_issues|length }}</div><div class="l">Title Issues</div></div>
+        <div class="stat"><div class="v">{{ data.seo.description_issues|length }}</div><div class="l">Description Issues</div></div>
+        <div class="stat"><div class="v">{{ data.seo.canonical_missing|length }}</div><div class="l">Missing Canonical</div></div>
+        <div class="stat"><div class="v">{{ data.seo.schema_coverage_pct }}%</div><div class="l">Schema.org Coverage</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Prioritized Action Plan</h2><span class="sheet-num">§7</span></div>
+    <div class="sheet-body">
+      {% for item in data.scoring.action_plan %}
+      <div class="action-item">
+        <span class="pill {{ item.priority }}">{{ item.priority }}</span>
+        <span class="action-area">{{ item.area }}</span>
+        <span>{{ item.action }}</span>
+      </div>
+      {% else %}
+      <p class="small-dim">No significant issues detected — nice work.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>Full Page Inventory</h2><span class="sheet-num">§8 — {{ data.pages|length }} pages</span></div>
+    <div class="sheet-body">
+      <div class="field" style="max-width:340px;">
+        <input type="text" id="table-filter" placeholder="Filter by URL or title…">
+      </div>
+      <div class="table-scroll">
+        <table id="inventory-table">
+          <thead>
+            <tr>
+              <th data-key="url">URL</th>
+              <th data-key="status_code">Status</th>
+              <th data-key="title">Title</th>
+              <th data-key="word_count">Words</th>
+              <th data-key="path_depth">Path Depth</th>
+              <th data-key="click_depth">Click Depth</th>
+              <th data-key="flags">Flags</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script id="audit-data" type="application/json">{{ data_json|safe }}</script>
+<script>
+const auditData = JSON.parse(document.getElementById('audit-data').textContent);
+Chart.defaults.color = '#9fb7cc';
+Chart.defaults.font.family = "IBM Plex Mono";
+Chart.defaults.borderColor = 'rgba(140,190,230,0.12)';
+
+// ---- HTTP status chart ----
+new Chart(document.getElementById('chart-status'), {
+  type: 'doughnut',
+  data: {
+    labels: Object.keys(auditData.seo.status_code_breakdown),
+    datasets: [{
+      data: Object.values(auditData.seo.status_code_breakdown),
+      backgroundColor: ['#7bab86','#e8a33d','#e2725b','#5a8fb5','#bcd6ea','#9fb7cc']
+    }]
+  },
+  options: { plugins: { legend: { position: 'bottom' } } }
+});
+
+// ---- path depth chart ----
+const depthDist = auditData.ia.path_depth_distribution;
+new Chart(document.getElementById('chart-depth'), {
+  type: 'bar',
+  data: {
+    labels: Object.keys(depthDist).map(d => 'Depth ' + d),
+    datasets: [{ data: Object.values(depthDist), backgroundColor: '#5a8fb5' }]
+  },
+  options: { plugins: { legend: { display:false } }, scales: { y: { beginAtZero:true } } }
+});
+
+// ---- taxonomy chart ----
+const taxonomy = auditData.ia.taxonomy;
+new Chart(document.getElementById('chart-taxonomy'), {
+  type: 'bar',
+  data: {
+    labels: Object.keys(taxonomy),
+    datasets: [{ data: Object.values(taxonomy), backgroundColor: '#e8a33d' }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display:false } },
+    scales: { x: { beginAtZero:true } }
+  }
+});
+
+// ---- hierarchy tree ----
+function renderTree(node, container) {
+  const ul = document.createElement('ul');
+  (node.children || []).sort((a,b)=>b.count-a.count).slice(0,60).forEach(child => {
+    const li = document.createElement('li');
+    li.innerHTML = `${child.name} <span class="node-count">(${child.count})</span>`;
+    if (child.children && child.children.length) renderTree(child, li);
+    ul.appendChild(li);
+  });
+  container.appendChild(ul);
+}
+renderTree(auditData.ia.hierarchy_tree, document.getElementById('hierarchy-tree'));
+
+// ---- page inventory table ----
+const pages = Object.values(auditData.pages);
+function flagsFor(p) {
+  const f = [];
+  if (p.is_thin_content) f.push('<span class="tag warn">thin</span>');
+  if (p.is_duplicate_of) f.push('<span class="tag bad">dup</span>');
+  if (p.images_missing_alt) f.push('<span class="tag warn">alt</span>');
+  if (!p.has_schema_org) f.push('<span class="tag" style="color:var(--linework-dim)">no-schema</span>');
+  if (p.error) f.push('<span class="tag bad">' + p.error + '</span>');
+  return f.join(' ');
+}
+let sortKey = 'click_depth', sortDir = 1;
+function renderTable() {
+  const filterVal = document.getElementById('table-filter').value.toLowerCase();
+  let rows = pages.filter(p => (p.url + ' ' + (p.title||'')).toLowerCase().includes(filterVal));
+  rows.sort((a,b) => {
+    const av = a[sortKey] ?? -1, bv = b[sortKey] ?? -1;
+    if (av < bv) return -1*sortDir;
+    if (av > bv) return 1*sortDir;
+    return 0;
+  });
+  const body = document.getElementById('inventory-body');
+  body.innerHTML = rows.slice(0, 500).map(p => `
+    <tr>
+      <td class="url-cell">${p.url}</td>
+      <td>${p.status_code ?? '—'}</td>
+      <td>${(p.title||'').slice(0,60)}</td>
+      <td>${p.word_count}</td>
+      <td>${p.path_depth}</td>
+      <td>${p.click_depth ?? '—'}</td>
+      <td>${flagsFor(p)}</td>
+    </tr>
+  `).join('');
+}
+document.querySelectorAll('#inventory-table th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    sortDir = (sortKey === key) ? -sortDir : 1;
+    sortKey = key;
+    renderTable();
+  });
+});
+document.getElementById('table-filter').addEventListener('input', renderTable);
+renderTable();
+
+// ---- link graph (simple canvas force layout) ----
+(function() {
+  const canvas = document.getElementById('link-graph');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cap = {{ graph_cap }};
+
+  const inbound = {};
+  (auditData.link_edges || []).forEach(([s,t]) => { inbound[t] = (inbound[t]||0) + 1; });
+  const allUrls = Object.keys(auditData.pages);
+  const topUrls = allUrls
+    .sort((a,b) => (inbound[b]||0) - (inbound[a]||0))
+    .slice(0, cap);
+  const urlSet = new Set(topUrls);
+  const nodes = topUrls.map((url, i) => ({
+    id: url,
+    x: W/2 + (Math.random()-0.5)*W*0.8,
+    y: H/2 + (Math.random()-0.5)*H*0.8,
+    vx: 0, vy: 0,
+    r: 3 + Math.min(10, Math.sqrt(inbound[url]||1)*2)
+  }));
+  const nodeIndex = {}; nodes.forEach((n,i)=>nodeIndex[n.id]=i);
+  const edges = (auditData.link_edges || [])
+    .filter(([s,t]) => urlSet.has(s) && urlSet.has(t) && s !== t)
+    .slice(0, 2000)
+    .map(([s,t]) => [nodeIndex[s], nodeIndex[t]]);
+
+  function step() {
+    // repulsion
+    for (let i=0;i<nodes.length;i++) {
+      for (let j=i+1;j<nodes.length;j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = a.x-b.x, dy = a.y-b.y;
+        let d2 = dx*dx+dy*dy || 0.01;
+        if (d2 < 14000) {
+          const f = 60 / d2;
+          a.vx += dx*f; a.vy += dy*f;
+          b.vx -= dx*f; b.vy -= dy*f;
+        }
+      }
+    }
+    // spring along edges
+    edges.forEach(([i,j]) => {
+      const a = nodes[i], b = nodes[j];
+      const dx = b.x-a.x, dy = b.y-a.y;
+      const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+      const f = (dist - 70) * 0.006;
+      a.vx += dx*f; a.vy += dy*f;
+      b.vx -= dx*f; b.vy -= dy*f;
+    });
+    nodes.forEach(n => {
+      n.vx *= 0.85; n.vy *= 0.85;
+      n.x += n.vx; n.y += n.vy;
+      n.x = Math.max(10, Math.min(W-10, n.x));
+      n.y = Math.max(10, Math.min(H-10, n.y));
+    });
+  }
+
+  let dragging = null;
+  canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX-rect.left) * (W/rect.width), my = (e.clientY-rect.top) * (H/rect.height);
+    let best = null, bestD = 400;
+    nodes.forEach(n => { const d = (n.x-mx)**2 + (n.y-my)**2; if (d < bestD) { bestD = d; best = n; } });
+    dragging = best;
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    dragging.x = (e.clientX-rect.left) * (W/rect.width);
+    dragging.y = (e.clientY-rect.top) * (H/rect.height);
+    dragging.vx = 0; dragging.vy = 0;
+  });
+  window.addEventListener('mouseup', () => dragging = null);
+
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle = 'rgba(140,190,230,0.18)';
+    edges.forEach(([i,j]) => {
+      const a = nodes[i], b = nodes[j];
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    });
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      ctx.fillStyle = n === dragging ? '#e2725b' : '#e8a33d';
+      ctx.fill();
+    });
+  }
+
+  let ticks = 0;
+  function loop() {
+    step(); draw();
+    ticks++;
+    if (ticks < 260) requestAnimationFrame(loop);
+    else setInterval(() => { step(); draw(); }, 400); // gentle settle updates if dragged later
+  }
+  loop();
+})();
+</script>
+
+</body>
+</html>

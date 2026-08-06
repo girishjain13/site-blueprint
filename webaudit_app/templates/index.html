@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site Blueprint — Enterprise IA &amp; UX Audit</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="titleblock">
+  <div class="tb-project">
+    SITE BLUEPRINT
+    <small>IA / UX / Content / Accessibility / SEO Audit</small>
+  </div>
+  <div class="spacer"></div>
+  <div class="tb-field"><label>Drawn</label><span class="val" id="tb-date"></span></div>
+  <div class="tb-field"><label>Sheet</label><span class="val">01 — Setup</span></div>
+</div>
+
+<div class="wrap">
+
+  <div class="sheet">
+    <div class="sheet-head"><h2>New Audit Run</h2><span class="sheet-num">§1</span></div>
+    <div class="sheet-body">
+      <form id="audit-form">
+        <div class="field">
+          <label class="field-label">Target URL</label>
+          <input type="url" id="start_url" placeholder="https://example.com" required>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label">Max Pages (cap 5000)</label>
+            <input type="number" id="max_pages" value="150" min="1" max="5000">
+          </div>
+          <div class="field">
+            <label class="field-label">Concurrency</label>
+            <input type="number" id="concurrency" value="8" min="1" max="30">
+          </div>
+          <div class="field">
+            <label class="field-label">Max Crawl Depth</label>
+            <input type="number" id="max_depth" value="12" min="1" max="50">
+          </div>
+        </div>
+        <div class="field-row" style="margin-bottom:16px;">
+          <label class="checkline"><input type="checkbox" id="respect_robots" checked> Respect robots.txt</label>
+          <label class="checkline"><input type="checkbox" id="use_sitemap" checked> Seed from sitemap.xml</label>
+          <label class="checkline"><input type="checkbox" id="include_subdomains"> Include subdomains</label>
+        </div>
+        <button class="btn" type="submit" id="start-btn">Start Crawl →</button>
+      </form>
+      <p class="small-dim" style="margin-top:14px;">
+        Crawls static HTML only (no JS rendering). Respects robots.txt and rate-limits requests via bounded concurrency.
+        Only audit sites you own or have permission to crawl.
+      </p>
+    </div>
+  </div>
+
+  <div class="sheet" id="progress-sheet" style="display:none;">
+    <div class="sheet-head"><h2>Crawl Progress</h2><span class="sheet-num" id="status-badge-num">§2</span></div>
+    <div class="sheet-body">
+      <span class="badge-status" id="status-badge">QUEUED</span>
+      <div class="progress-outer" style="margin-top:14px;">
+        <div class="progress-inner" id="progress-bar" style="width:0%;"></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><div class="v" id="stat-crawled">0</div><div class="l">Pages Crawled</div></div>
+        <div class="stat"><div class="v" id="stat-queued">0</div><div class="l">Queued</div></div>
+        <div class="stat"><div class="v" id="stat-errors">0</div><div class="l">Errors</div></div>
+        <div class="stat"><div class="v" id="stat-eta">—</div><div class="l">ETA</div></div>
+      </div>
+      <div class="field-label" style="margin-bottom:6px;">Current URL</div>
+      <div class="small-dim" id="current-url" style="font-family: var(--font-mono); margin-bottom: 14px;">—</div>
+      <div class="log-box" id="log-box"></div>
+      <div style="margin-top:16px;">
+        <a class="btn" id="view-report-btn" style="display:none;" href="#">View Report →</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.getElementById('tb-date').textContent = new Date().toISOString().slice(0,10);
+
+const form = document.getElementById('audit-form');
+const progressSheet = document.getElementById('progress-sheet');
+let pollTimer = null;
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  document.getElementById('start-btn').disabled = true;
+  const payload = {
+    start_url: document.getElementById('start_url').value,
+    max_pages: parseInt(document.getElementById('max_pages').value, 10),
+    concurrency: parseInt(document.getElementById('concurrency').value, 10),
+    max_depth: parseInt(document.getElementById('max_depth').value, 10),
+    respect_robots: document.getElementById('respect_robots').checked,
+    use_sitemap: document.getElementById('use_sitemap').checked,
+    include_subdomains: document.getElementById('include_subdomains').checked,
+  };
+  const resp = await fetch('/api/audits', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    alert('Failed to start audit: ' + (await resp.text()));
+    document.getElementById('start-btn').disabled = false;
+    return;
+  }
+  const {audit_id} = await resp.json();
+  progressSheet.style.display = 'block';
+  progressSheet.scrollIntoView({behavior:'smooth'});
+  pollStatus(audit_id);
+});
+
+function pollStatus(auditId) {
+  pollTimer = setInterval(async () => {
+    const resp = await fetch(`/api/audits/${auditId}/status`);
+    if (!resp.ok) return;
+    const s = await resp.json();
+    document.getElementById('status-badge').textContent = s.status.toUpperCase();
+    const pct = s.max_pages ? Math.min(100, Math.round(100 * s.pages_crawled / s.max_pages)) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('stat-crawled').textContent = s.pages_crawled;
+    document.getElementById('stat-queued').textContent = s.pages_queued;
+    document.getElementById('stat-errors').textContent = s.pages_errored;
+    document.getElementById('stat-eta').textContent = s.eta_seconds != null ? Math.round(s.eta_seconds) + 's' : '—';
+    document.getElementById('current-url').textContent = s.current_url || '—';
+    document.getElementById('log-box').textContent = (s.log || []).slice(-40).join('\n');
+    document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight;
+
+    if (s.status === 'done') {
+      clearInterval(pollTimer);
+      const btn = document.getElementById('view-report-btn');
+      btn.href = `/api/audits/${auditId}/report`;
+      btn.style.display = 'inline-block';
+      btn.textContent = 'View Report →';
+      window.location = `/api/audits/${auditId}/report`;
+    } else if (s.status === 'error') {
+      clearInterval(pollTimer);
+      document.getElementById('status-badge').textContent = 'ERROR';
+    }
+  }, 1200);
+}
+</script>
+
+</body>
+</html>
