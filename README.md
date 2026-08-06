@@ -35,7 +35,7 @@ multi-tenant auth, billing, Celery/Redis workers, or Docker/CI-CD scaffolding
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-docker.txt
 uvicorn app:app --reload --port 8000
 ```
 

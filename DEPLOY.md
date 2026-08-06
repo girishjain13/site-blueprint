@@ -67,7 +67,7 @@ right after a run, that's just CDN propagation, not a failure.
 
 ---
 
-## Option C — Streamlit Community Cloud (a different frontend, but free with no card historically required)
+## Option C — Streamlit Community Cloud (a different frontend, free with no card historically required)
 
 This uses a separate entry point — `streamlit_app.py` — built for hosts that
 can't reasonably run a full custom FastAPI+HTML frontend. It reuses every
@@ -75,12 +75,17 @@ bit of the actual audit engine (crawler, analyzers, scoring, exports); only
 the visual layer is simpler, built from Streamlit's own components instead
 of the custom design in `templates/`.
 
-**Important:** `streamlit_app.py` needs its own dependency file,
-`requirements-streamlit.txt` — NOT the main `requirements.txt`. Installing
-Streamlit and FastAPI in the same environment causes a real, silent-until-
-you-hit-it version conflict on a shared dependency (`starlette`) that
-breaks the FastAPI app. Keep these two deployment paths in separate
-environments.
+**Important, and this one's confirmed against a real deployment, not
+assumed:** Streamlit Community Cloud always installs from `requirements.txt`
+at the repo root — there's no working setting to point it at a different
+file (an earlier version of this doc claimed otherwise; that turned out to
+be wrong). Because of that, `requirements.txt` in this repo is deliberately
+the Streamlit-safe dependency set. The FastAPI/Docker path uses
+`requirements-docker.txt` instead — that split is what keeps Streamlit and
+FastAPI's conflicting dependencies from ever landing in the same
+environment. If you're setting up the Docker/Render path, use
+`requirements-docker.txt` explicitly (see those sections above); Streamlit
+Cloud needs no special configuration at all — just deploy normally.
 
 ### Setup
 
@@ -90,16 +95,13 @@ environments.
    required, historically — confirm at signup, since free-tier terms shift).
 3. **New app** → select your repo and the `main` branch → main file path:
    `streamlit_app.py`.
-4. Under **Advanced settings**, set the requirements file path to
-   `requirements-streamlit.txt` (not the default `requirements.txt`).
-5. In the same Advanced settings, add secrets in TOML format if you want
-   them:
+4. Optional — add secrets under **Advanced settings**, in TOML format:
    ```toml
    ANTHROPIC_API_KEY = "sk-ant-..."
    PAGESPEED_API_KEY = "..."
    ```
    Both are optional — the app works without them.
-6. Deploy. Your app will be live at a `*.streamlit.app` URL.
+5. Deploy. Your app will be live at a `*.streamlit.app` URL.
 
 ### What's different here vs. the FastAPI app
 
@@ -155,7 +157,7 @@ is fine; re-run the audit.
 2. At render.com, **New → Web Service** → connect the repo.
 3. Render should auto-detect the `Dockerfile`. If it instead offers a
    native Python environment, set:
-   - Build command: `pip install -r requirements.txt`
+   - Build command: `pip install -r requirements-docker.txt && playwright install --with-deps chromium`
    - Start command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
 4. Choose the **Free** instance type → Create Web Service.
 5. Same caveats as above, plus: Render's free web services spin down after

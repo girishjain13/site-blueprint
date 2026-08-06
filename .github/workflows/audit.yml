@@ -70,7 +70,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-docker.txt
 
       - name: Install Playwright browser (only if JS rendering is requested)
         if: ${{ inputs.render_js == 'true' }}

@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-docker.txt .
+RUN pip install --no-cache-dir -r requirements-docker.txt
 
 # Only needed if you enable render_js — installs Chromium + its OS-level
 # dependencies (fonts, libgbm, etc.) for Playwright. Adds real build time

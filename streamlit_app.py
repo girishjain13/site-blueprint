@@ -38,10 +38,18 @@ from report_builder import export_csv, export_json, export_xlsx
 st.set_page_config(page_title="UX & IA Audit", layout="wide")
 
 # Secrets (set via Streamlit's Secrets manager) flow into the same env vars
-# ai_insights.py / analyzers/performance.py already look for.
-for key in ("ANTHROPIC_API_KEY", "PAGESPEED_API_KEY"):
-    if key in st.secrets and not os.environ.get(key):
-        os.environ[key] = st.secrets[key]
+# ai_insights.py / analyzers/performance.py already look for. st.secrets
+# raises FileNotFoundError if no secrets.toml exists at all (i.e. nobody's
+# configured any secrets yet) — which is exactly the "works without them"
+# case this needs to support, so that has to be caught, not just a missing
+# key within an existing file.
+try:
+    _secrets = st.secrets
+    for key in ("ANTHROPIC_API_KEY", "PAGESPEED_API_KEY"):
+        if key in _secrets and not os.environ.get(key):
+            os.environ[key] = _secrets[key]
+except Exception:
+    pass  # no secrets configured — every feature that needs one just stays off
 
 if "audit_data" not in st.session_state:
     st.session_state.audit_data = None

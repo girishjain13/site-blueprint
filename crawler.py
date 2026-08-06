@@ -268,7 +268,13 @@ class AsyncCrawler:
         return len([seg for seg in path.split("/") if seg])
 
     def _parse_html(self, record: PageRecord, html: str, queue: deque, depth: int):
-        soup = BeautifulSoup(html, "lxml")
+        # html.parser (stdlib) instead of lxml — no compiled C extension to
+        # build, which has repeatedly been a source of platform-specific
+        # deployment failures (missing libxml2/libxslt dev headers, no
+        # prebuilt wheel for a given Python version, etc.). Slightly more
+        # lenient on malformed HTML and marginally slower than lxml, which
+        # is an acceptable trade for "installs reliably everywhere."
+        soup = BeautifulSoup(html, "html.parser")
 
         # --- metadata ---
         if soup.title and soup.title.string:
