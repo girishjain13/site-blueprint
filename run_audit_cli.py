@@ -11,25 +11,31 @@ Usage (local):
     START_URL=https://example.com MAX_PAGES=100 python run_audit_cli.py
 
 Writes:
-    docs/index.html          the report (what GitHub Pages serves)
+    docs/report.html             the report (what GitHub Pages serves)
+    docs/index.html               the persistent launcher page
     docs/exports/audit.json
     docs/exports/audit.csv
     docs/exports/audit.xlsx
+    docs/screenshots/*.png        only if RENDER_JS + CAPTURE_SCREENSHOTS are on
+    history/<domain>.jsonl        committed back to the repo by the workflow
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import sys
 from pathlib import Path
 
 from audit_engine import run_audit
 from crawler import CrawlConfig
+from history import append_history, load_history
 from models import AuditStatus, CrawlProgress
 from report_builder import export_csv, export_json, export_xlsx, render_html_report
 
 OUT_DIR = Path(__file__).parent / "docs"
 EXPORTS_DIR = OUT_DIR / "exports"
+SCREENSHOTS_DIR = OUT_DIR / "screenshots"
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -50,6 +56,10 @@ def _print_progress_line(progress: CrawlProgress) -> None:
     )
 
 
+def _screenshot_filename(url: str) -> str:
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16] + ".png"
+
+
 async def main() -> int:
     start_url = os.environ.get("START_URL", "").strip()
     if not start_url:
@@ -67,6 +77,12 @@ async def main() -> int:
     include_subdomains = _env_bool("INCLUDE_SUBDOMAINS", False)
     with_ai_summary = _env_bool("WITH_AI_SUMMARY", True)  # only fires if ANTHROPIC_API_KEY is set too
 
+    render_js = _env_bool("RENDER_JS", False)
+    capture_screenshots = _env_bool("CAPTURE_SCREENSHOTS", False) and render_js
+    check_external_links = _env_bool("CHECK_EXTERNAL_LINKS", False)
+    run_performance = _env_bool("RUN_PERFORMANCE", False)
+    pagespeed_api_key = os.environ.get("PAGESPEED_API_KEY", "").strip() or None
+
     config = CrawlConfig(
         start_url=start_url,
         max_pages=min(max_pages, 5000),
@@ -75,10 +91,14 @@ async def main() -> int:
         respect_robots=respect_robots,
         use_sitemap=use_sitemap,
         include_subdomains=include_subdomains,
+        render_js=render_js,
+        capture_screenshots=capture_screenshots,
+        check_external_links=check_external_links,
     )
     progress = CrawlProgress()
 
-    print(f"[audit] starting crawl of {start_url} (max_pages={config.max_pages})", flush=True)
+    mode_note = " (JS-rendered)" if render_js else ""
+    print(f"[audit] starting crawl of {start_url}{mode_note} (max_pages={config.max_pages})", flush=True)
 
     last_logged = -1
 
@@ -88,7 +108,13 @@ async def main() -> int:
             last_logged = progress.pages_crawled
             _print_progress_line(progress)
 
-    audit_data = await run_audit(config, progress, on_progress=on_progress, with_ai_summary=with_ai_summary)
+    prior_history = load_history(start_url)
+
+    audit_data, screenshots = await run_audit(
+        config, progress, on_progress=on_progress, with_ai_summary=with_ai_summary,
+        run_performance=run_performance, pagespeed_api_key=pagespeed_api_key,
+        history_records=prior_history,
+    )
     audit_data["audit_id"] = "latest"
 
     if progress.status == AuditStatus.ERROR:
@@ -97,6 +123,21 @@ async def main() -> int:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # persist this run's scores to history now, so a crash further down
+    # (rendering, exports) doesn't also lose the history record
+    new_record = append_history(start_url, audit_data)
+    audit_data["history"] = prior_history + [new_record]
+
+    # save screenshots (only populated if render_js + capture_screenshots)
+    screenshot_map = {}
+    if screenshots:
+        SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        for url, png_bytes in screenshots.items():
+            fname = _screenshot_filename(url)
+            (SCREENSHOTS_DIR / fname).write_bytes(png_bytes)
+            screenshot_map[url] = f"screenshots/{fname}"
+    audit_data["screenshot_paths"] = screenshot_map
 
     html = render_html_report(audit_data)
     # the live app serves exports from /api/... and CSS from a /static
@@ -131,6 +172,12 @@ async def main() -> int:
     print(f"[audit] done — {audit_data['meta']['pages_crawled']} pages, "
           f"UX maturity {audit_data['scoring']['ux_maturity_score']} "
           f"({audit_data['scoring']['ux_maturity_band']})", flush=True)
+    if screenshots:
+        print(f"[audit] captured {len(screenshots)} screenshot(s)", flush=True)
+    if run_performance:
+        print(f"[audit] performance sample: avg score "
+              f"{audit_data['performance'].get('avg_performance_score')}", flush=True)
+    print(f"[audit] history now has {len(audit_data['history'])} record(s) for this domain", flush=True)
     print(f"[audit] wrote {OUT_DIR}/report.html and refreshed {OUT_DIR}/index.html", flush=True)
     return 0
 

@@ -65,6 +65,13 @@ class CrawlConfig:
     respect_robots: bool = True
     use_sitemap: bool = True
     auth_headers: Optional[dict] = None
+    # optional JS rendering (see render.py) — off by default since it's
+    # slower and needs Playwright's browser binaries installed
+    render_js: bool = False
+    capture_screenshots: bool = False
+    screenshot_cap: int = 12
+    check_external_links: bool = False
+    external_link_cap: int = 100
 
 
 class AsyncCrawler:
@@ -90,6 +97,11 @@ class AsyncCrawler:
         self.integration_hits: dict = {}  # integration name -> set of page urls
         self.unrecognized_script_domains: Counter = Counter()
         self.all_external_scripts: set = set()
+        # render_js mode: captured screenshots, keyed by url, bounded by
+        # config.screenshot_cap so a large crawl doesn't blow up memory
+        self.screenshots: dict = {}
+        # bounded external-link health check (see analyzers/link_health.py)
+        self.external_link_targets: dict = {}  # url -> set of internal pages that link to it
 
     async def crawl(self, on_progress: Optional[Callable[[], Awaitable[None]]] = None):
         cfg = self.config
@@ -99,62 +111,79 @@ class AsyncCrawler:
         if cfg.auth_headers:
             headers.update(cfg.auth_headers)
 
-        limits = httpx.Limits(max_connections=cfg.concurrency, max_keepalive_connections=cfg.concurrency)
-        async with httpx.AsyncClient(
-            headers=headers, follow_redirects=True, timeout=cfg.request_timeout, limits=limits
-        ) as client:
-            robots = RobotsInfo(cfg.start_url)
-            if cfg.respect_robots:
-                await robots.load(client)
+        renderer = None
+        if cfg.render_js:
+            from render import RenderingClient
+            renderer = RenderingClient(
+                concurrency=min(cfg.concurrency, 6),
+                capture_screenshots=cfg.capture_screenshots,
+                timeout_ms=int(cfg.request_timeout * 1000),
+            )
+            self.progress.note("JS rendering enabled — launching headless browser (slower than a plain fetch).")
+            await renderer.start()
 
-            queue: deque[tuple[str, int]] = deque()
-            start = normalize_url(cfg.start_url)
-            queue.append((start, 0))
-            self._seen.add(start)
+        try:
+            limits = httpx.Limits(max_connections=cfg.concurrency, max_keepalive_connections=cfg.concurrency)
+            async with httpx.AsyncClient(
+                headers=headers, follow_redirects=True, timeout=cfg.request_timeout, limits=limits
+            ) as client:
+                robots = RobotsInfo(cfg.start_url)
+                if cfg.respect_robots:
+                    await robots.load(client)
 
-            # Seed extra URLs from sitemap.xml so IA analysis reflects the
-            # declared site structure, not just what's link-reachable.
-            if cfg.use_sitemap:
-                try:
-                    sitemap_urls = await robots.discover_sitemap_urls(client, cap=cfg.max_pages * 2)
-                    for u in sitemap_urls:
-                        nu = normalize_url(u)
-                        if nu not in self._seen and same_site(nu, self._root_netloc, cfg.include_subdomains):
-                            self._seen.add(nu)
-                            queue.append((nu, 1))
-                except Exception:
-                    pass
+                queue: deque[tuple[str, int]] = deque()
+                start = normalize_url(cfg.start_url)
+                queue.append((start, 0))
+                self._seen.add(start)
 
-            sem = asyncio.Semaphore(cfg.concurrency)
-            t0 = time.monotonic()
-            in_flight: set[asyncio.Task] = set()
+                # Seed extra URLs from sitemap.xml so IA analysis reflects the
+                # declared site structure, not just what's link-reachable.
+                if cfg.use_sitemap:
+                    try:
+                        sitemap_urls = await robots.discover_sitemap_urls(client, cap=cfg.max_pages * 2)
+                        for u in sitemap_urls:
+                            nu = normalize_url(u)
+                            if nu not in self._seen and same_site(nu, self._root_netloc, cfg.include_subdomains):
+                                self._seen.add(nu)
+                                queue.append((nu, 1))
+                    except Exception:
+                        pass
 
-            async def worker(url: str, depth: int):
-                async with sem:
-                    await self._fetch_and_parse(client, robots, url, depth, queue)
-                    self.progress.pages_crawled = len(self.pages)
-                    self.progress.pages_queued = len(queue)
-                    self.progress.current_url = url
-                    elapsed = time.monotonic() - t0
-                    self.progress.elapsed_seconds = elapsed
-                    n = max(self.progress.pages_crawled, 1)
-                    self.progress.avg_page_seconds = elapsed / n
-                    remaining = min(len(queue), cfg.max_pages - self.progress.pages_crawled)
-                    self.progress.eta_seconds = max(remaining, 0) * self.progress.avg_page_seconds
-                    if on_progress:
-                        await on_progress()
+                # rendering a real browser page is much heavier than an HTTP
+                # request — cap effective concurrency accordingly
+                effective_concurrency = min(cfg.concurrency, 6) if cfg.render_js else cfg.concurrency
+                sem = asyncio.Semaphore(effective_concurrency)
+                t0 = time.monotonic()
 
-            while queue and len(self.pages) < cfg.max_pages:
-                # launch a batch up to available concurrency
-                batch = []
-                while queue and len(batch) < cfg.concurrency and len(self.pages) + len(batch) < cfg.max_pages:
-                    url, depth = queue.popleft()
-                    if depth > cfg.max_depth:
-                        continue
-                    batch.append(worker(url, depth))
-                if not batch:
-                    break
-                await asyncio.gather(*batch)
+                async def worker(url: str, depth: int):
+                    async with sem:
+                        await self._fetch_and_parse(client, robots, url, depth, queue, renderer)
+                        self.progress.pages_crawled = len(self.pages)
+                        self.progress.pages_queued = len(queue)
+                        self.progress.current_url = url
+                        elapsed = time.monotonic() - t0
+                        self.progress.elapsed_seconds = elapsed
+                        n = max(self.progress.pages_crawled, 1)
+                        self.progress.avg_page_seconds = elapsed / n
+                        remaining = min(len(queue), cfg.max_pages - self.progress.pages_crawled)
+                        self.progress.eta_seconds = max(remaining, 0) * self.progress.avg_page_seconds
+                        if on_progress:
+                            await on_progress()
+
+                while queue and len(self.pages) < cfg.max_pages:
+                    # launch a batch up to available concurrency
+                    batch = []
+                    while queue and len(batch) < effective_concurrency and len(self.pages) + len(batch) < cfg.max_pages:
+                        url, depth = queue.popleft()
+                        if depth > cfg.max_depth:
+                            continue
+                        batch.append(worker(url, depth))
+                    if not batch:
+                        break
+                    await asyncio.gather(*batch)
+        finally:
+            if renderer:
+                await renderer.stop()
 
         self.progress.status = AuditStatus.ANALYZING
         return self.pages, self.edges
@@ -166,6 +195,7 @@ class AsyncCrawler:
         url: str,
         depth: int,
         queue: deque,
+        renderer=None,
     ):
         record = PageRecord(url=url, depth=depth, path_depth=self._path_depth(url))
         if self.config.respect_robots and not robots.can_fetch(url):
@@ -175,6 +205,33 @@ class AsyncCrawler:
             return
 
         t0 = time.monotonic()
+
+        if renderer is not None:
+            rp = await renderer.fetch(url)
+            record.fetch_ms = (time.monotonic() - t0) * 1000
+            if rp.error:
+                record.error = rp.error
+                self.pages[url] = record
+                self.progress.pages_errored += 1
+                self.progress.note(f"Render failed: {url} ({rp.error})")
+                return
+            record.status_code = rp.status_code
+            if rp.url != url:
+                record.redirected_from = url
+                record.url = rp.url
+            record.content_type = "text/html"  # a rendered DOM is always HTML by construction
+            if rp.status_code and rp.status_code >= 400:
+                record.error = f"http_{rp.status_code}"
+                self.pages[record.url] = record
+                self.progress.pages_errored += 1
+                self.progress.note(f"Error {rp.status_code}: {url}")
+                return
+            if rp.screenshot and len(self.screenshots) < self.config.screenshot_cap:
+                self.screenshots[record.url] = rp.screenshot
+            self._parse_html(record, rp.html, queue, depth)
+            self.pages[record.url] = record
+            return
+
         try:
             resp = await client.get(url)
             record.fetch_ms = (time.monotonic() - t0) * 1000
@@ -298,6 +355,9 @@ class AsyncCrawler:
                     queue.append((normalized, depth + 1))
             else:
                 external += 1
+                if self.config.check_external_links and len(self.external_link_targets) < self.config.external_link_cap:
+                    ext_normalized = normalize_url(absolute)
+                    self.external_link_targets.setdefault(ext_normalized, set()).add(record.url)
         record.external_links_out_count = external
 
         # --- scripts / third-party integrations ---

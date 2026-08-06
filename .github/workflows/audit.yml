@@ -33,9 +33,25 @@ on:
         description: "Include subdomains as in-scope"
         type: boolean
         default: false
+      render_js:
+        description: "Render pages with a real headless browser (fixes JS-heavy/SPA sites; slower, lower concurrency)"
+        type: boolean
+        default: false
+      capture_screenshots:
+        description: "Capture page screenshots (only applies if render_js is on)"
+        type: boolean
+        default: false
+      check_external_links:
+        description: "Spot-check a sample of external links for broken (4xx/5xx) targets"
+        type: boolean
+        default: false
+      run_performance:
+        description: "Sample real Core Web Vitals via PageSpeed Insights (homepage + top pages; adds run time)"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -56,6 +72,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install Playwright browser (only if JS rendering is requested)
+        if: ${{ inputs.render_js == 'true' }}
+        run: playwright install --with-deps chromium
+
       - name: Run audit
         env:
           START_URL: ${{ inputs.start_url }}
@@ -65,10 +85,27 @@ jobs:
           RESPECT_ROBOTS: ${{ inputs.respect_robots }}
           USE_SITEMAP: ${{ inputs.use_sitemap }}
           INCLUDE_SUBDOMAINS: ${{ inputs.include_subdomains }}
-          # Optional — set this as a repo secret to get an AI executive
-          # summary. Leave the secret unset and the report still works.
+          RENDER_JS: ${{ inputs.render_js }}
+          CAPTURE_SCREENSHOTS: ${{ inputs.capture_screenshots }}
+          CHECK_EXTERNAL_LINKS: ${{ inputs.check_external_links }}
+          RUN_PERFORMANCE: ${{ inputs.run_performance }}
+          # Optional secrets — both features work without them (AI summary
+          # is skipped; PageSpeed Insights just runs slower/rate-limited).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
         run: python run_audit_cli.py
+
+      - name: Commit run history
+        # history/ is the one thing this workflow writes that's meant to
+        # persist across runs (docs/ is a throwaway build artifact — see
+        # .gitignore) — commit it back to the repo so the next run's trend
+        # chart has something to plot against.
+        run: |
+          git config user.name "audit-bot"
+          git config user.email "audit-bot@users.noreply.github.com"
+          git add history/
+          git diff --staged --quiet || git commit -m "Update audit history [skip ci]"
+          git push || echo "Nothing to push"
 
       - uses: actions/upload-pages-artifact@v3
         with:

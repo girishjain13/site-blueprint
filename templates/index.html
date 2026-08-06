@@ -44,6 +44,11 @@
           <label class="checkline"><input type="checkbox" id="use_sitemap" checked> Seed from sitemap.xml</label>
           <label class="checkline"><input type="checkbox" id="include_subdomains"> Include subdomains</label>
         </div>
+        <div class="field-row" style="margin-bottom:20px;">
+          <label class="checkline"><input type="checkbox" id="render_js"> Render with a real browser (JS-heavy sites)</label>
+          <label class="checkline"><input type="checkbox" id="capture_screenshots"> Capture screenshots</label>
+          <label class="checkline"><input type="checkbox" id="check_external_links"> Check external links</label>
+        </div>
         <button class="btn" type="submit" id="start-btn">Start Audit →</button>
       </form>
       <p class="small-dim" style="margin-top:16px;">
@@ -93,6 +98,9 @@ form.addEventListener('submit', async (e) => {
     respect_robots: document.getElementById('respect_robots').checked,
     use_sitemap: document.getElementById('use_sitemap').checked,
     include_subdomains: document.getElementById('include_subdomains').checked,
+    render_js: document.getElementById('render_js').checked,
+    capture_screenshots: document.getElementById('capture_screenshots').checked,
+    check_external_links: document.getElementById('check_external_links').checked,
   };
   const resp = await fetch('/api/audits', {
     method: 'POST',

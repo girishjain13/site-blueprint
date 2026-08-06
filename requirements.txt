@@ -8,5 +8,6 @@ jinja2==3.1.4
 openpyxl==3.1.5
 pydantic==2.9.2
 anthropic==0.34.2
+playwright==1.47.0
 pytest==8.3.3
 pytest-asyncio==0.24.0

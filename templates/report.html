@@ -88,6 +88,17 @@
     </div>
   </div>
 
+  {% if data.history and data.history|length > 1 %}
+  <div class="section">
+    <div class="section-head"><h2>Trend</h2><div class="desc">UX Maturity across {{ data.history|length }} recorded audits of this domain — this is what actually shows whether things are improving.</div></div>
+    <div class="chart-box"><canvas id="chart-trend" height="200"></canvas></div>
+  </div>
+  {% elif data.history %}
+  <div class="section">
+    <div class="card"><p class="small-dim">This is the first recorded audit for this domain — a trend line will appear here starting with your next run.</p></div>
+  </div>
+  {% endif %}
+
   <div class="section">
     <div class="section-head">
       <h2>Heuristic Evaluation</h2>
@@ -149,6 +160,32 @@
       {% endfor %}
     </div>
   </div>
+
+  {% if data.performance.sampled %}
+  <div class="section">
+    <div class="section-head"><h2>Real-World Performance</h2><div class="desc">Actual Core Web Vitals from Google's PageSpeed Insights — {{ data.performance.note }}</div></div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <div class="stat"><div class="v">{{ data.performance.avg_performance_score if data.performance.avg_performance_score is not none else '—' }}</div><div class="l">Avg performance score</div></div>
+      <div class="stat"><div class="v">{{ data.performance.sample_size }}</div><div class="l">Pages sampled</div></div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Page</th><th>Score</th><th>LCP</th><th>CLS</th><th>TBT</th></tr></thead>
+        <tbody>
+          {% for r in data.performance.results %}
+          <tr>
+            <td class="url-cell">{{ r.url }}</td>
+            <td>{{ r.performance_score if r.performance_score is not none else ('error: ' + r.get('error','?')) }}</td>
+            <td>{{ r.lcp or '—' }}</td>
+            <td>{{ r.cls or '—' }}</td>
+            <td>{{ r.tbt or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="section">
     <div class="section-head"><h2>Most Used Keywords</h2><div class="desc">The words and two-word phrases that come up most across the crawled pages — a quick read on what the site is actually about, and whether that matches what it should be about.</div></div>
@@ -245,6 +282,40 @@
     </div>
   </div>
 
+  {% if data.link_health.checked %}
+  <div class="section">
+    <div class="section-head"><h2>External Link Health</h2><div class="desc">Spot-checked {{ data.link_health.checked }} external link target(s) found during the crawl.</div></div>
+    <div class="card">
+      {% if data.link_health.broken %}
+      <table>
+        <thead><tr><th>Broken URL</th><th>Status</th><th>Linked from</th></tr></thead>
+        <tbody>
+          {% for b in data.link_health.broken[:20] %}
+          <tr><td class="url-cell">{{ b.url }}</td><td>{{ b.status_code or b.get('error','?') }}</td><td>{{ b.linked_from_count }} page(s)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="small-dim">No broken external links found in the sample checked.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if data.screenshot_paths %}
+  <div class="section">
+    <div class="section-head"><h2>Page Screenshots</h2><div class="desc">Captured during a JS-rendered crawl — what these pages actually looked like when visited.</div></div>
+    <div class="chart-grid">
+      {% for url, path in data.screenshot_paths.items() %}
+      <div class="chart-box">
+        <h3 class="small-dim url-cell" style="white-space:normal;">{{ url }}</h3>
+        <img src="{{ path }}" style="width:100%; border-radius:8px; border:1px solid var(--line);" loading="lazy">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="section">
     <div class="section-head"><h2>Crawl Detail</h2><div class="desc">The underlying numbers behind the scores above, for anyone who wants to double-check the math.</div></div>
     <div class="chart-grid">
@@ -310,6 +381,22 @@ new Chart(document.getElementById('chart-status'), {
   },
   options: { plugins: { legend: { position: 'bottom' } } }
 });
+
+const history = auditData.history || [];
+if (history.length > 1) {
+  new Chart(document.getElementById('chart-trend'), {
+    type: 'line',
+    data: {
+      labels: history.map(h => h.timestamp.slice(0, 10)),
+      datasets: [
+        { label: 'UX Maturity', data: history.map(h => h.ux_maturity_score), borderColor: '#C1531F', backgroundColor: '#C1531F', tension: 0.2 },
+        { label: 'IA Health', data: history.map(h => h.ia_health_score), borderColor: '#4F7A5C', backgroundColor: '#4F7A5C', tension: 0.2 },
+        { label: 'Accessibility', data: history.map(h => h.accessibility_score), borderColor: '#B8862B', backgroundColor: '#B8862B', tension: 0.2 },
+      ]
+    },
+    options: { scales: { y: { min: 0, max: 100 } }, plugins: { legend: { position: 'bottom' } } }
+  });
+}
 
 const kw = (auditData.keywords && auditData.keywords.top_keywords || []).slice(0, 15);
 new Chart(document.getElementById('chart-keywords'), {

@@ -186,6 +186,39 @@ def export_xlsx(audit_data: dict) -> bytes:
     ws_int.column_dimensions["F"].width = 34
     ws_int.column_dimensions["G"].width = 14
 
+    # ---- Performance ----
+    perf = audit_data.get("performance", {})
+    if perf.get("sampled"):
+        ws_perf = wb.create_sheet("Performance")
+        ws_perf.append(["Page", "Score", "LCP", "CLS", "TBT"])
+        for r in perf.get("results", []):
+            ws_perf.append([r.get("url"), r.get("performance_score"), r.get("lcp"), r.get("cls"), r.get("tbt")])
+        style_header(ws_perf)
+        autosize(ws_perf, [46, 9, 12, 10, 10])
+
+    # ---- External Link Health ----
+    link_health = audit_data.get("link_health", {})
+    if link_health.get("checked"):
+        ws_link = wb.create_sheet("External Link Health")
+        ws_link.append(["Broken URL", "Status", "Linked From (count)", "Example Linking Page"])
+        for b in link_health.get("broken", []):
+            ws_link.append([b.get("url"), b.get("status_code") or b.get("error"), b.get("linked_from_count"), b.get("example_linking_page")])
+        style_header(ws_link)
+        autosize(ws_link, [46, 12, 18, 46])
+
+    # ---- History ----
+    history = audit_data.get("history", [])
+    if len(history) > 1:
+        ws_hist = wb.create_sheet("History")
+        ws_hist.append(["Date", "Pages Crawled", "UX Maturity", "IA Health", "Content", "Accessibility", "SEO"])
+        for h in history:
+            ws_hist.append([
+                h.get("timestamp", "")[:10], h.get("pages_crawled"), h.get("ux_maturity_score"),
+                h.get("ia_health_score"), h.get("content_quality_score"), h.get("accessibility_score"), h.get("seo_score"),
+            ])
+        style_header(ws_hist)
+        autosize(ws_hist, [14, 14, 13, 11, 11, 13, 9])
+
     # ---- Page Inventory ----
     ws5 = wb.create_sheet("Page Inventory")
     fieldnames = [

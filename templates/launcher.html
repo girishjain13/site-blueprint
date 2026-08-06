@@ -46,6 +46,14 @@
           <label class="checkline"><input type="checkbox" id="use_sitemap" checked> Seed from sitemap.xml</label>
           <label class="checkline"><input type="checkbox" id="include_subdomains"> Include subdomains</label>
         </div>
+        <div class="field-row" style="margin-top:10px;">
+          <label class="checkline"><input type="checkbox" id="render_js"> Render with a real browser (fixes JS-heavy/SPA sites, slower)</label>
+          <label class="checkline"><input type="checkbox" id="capture_screenshots"> Capture screenshots (needs render_js on)</label>
+        </div>
+        <div class="field-row" style="margin-top:10px;">
+          <label class="checkline"><input type="checkbox" id="check_external_links"> Spot-check external links for broken (4xx/5xx) targets</label>
+          <label class="checkline"><input type="checkbox" id="run_performance"> Sample real Core Web Vitals (PageSpeed Insights, adds run time)</label>
+        </div>
       </details>
 
       <details open style="margin-bottom:18px;">
@@ -171,6 +179,10 @@ document.getElementById('start-btn').addEventListener('click', async () => {
           respect_robots: document.getElementById('respect_robots').checked,
           use_sitemap: document.getElementById('use_sitemap').checked,
           include_subdomains: document.getElementById('include_subdomains').checked,
+          render_js: document.getElementById('render_js').checked,
+          capture_screenshots: document.getElementById('capture_screenshots').checked,
+          check_external_links: document.getElementById('check_external_links').checked,
+          run_performance: document.getElementById('run_performance').checked,
         },
       }),
     });

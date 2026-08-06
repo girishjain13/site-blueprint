@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
-from analyzers import accessibility, content, ia, integrations, keywords, scoring, seo
+from analyzers import accessibility, content, ia, integrations, keywords, link_health, performance, scoring, seo
 from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary
 from crawler import AsyncCrawler, CrawlConfig
@@ -18,12 +18,23 @@ async def run_audit(
     progress: CrawlProgress,
     on_progress: Optional[Callable[[], Awaitable[None]]] = None,
     with_ai_summary: bool = True,
-) -> dict:
+    run_performance: bool = False,
+    pagespeed_api_key: Optional[str] = None,
+    history_records: Optional[list[dict]] = None,
+) -> tuple[dict, dict]:
+    """Returns (audit_data, screenshots). `screenshots` maps url -> raw PNG
+    bytes and is kept separate from audit_data because it isn't JSON-safe —
+    callers that need it (the CLI's static build) write it to disk
+    themselves; callers that don't (nothing currently) can just ignore it.
+    `history_records` is prior runs for this domain (see history.py) if the
+    caller wants a trend chart to include them alongside this run.
+    """
     progress.started_at = datetime.now(timezone.utc)
     crawler = AsyncCrawler(config, progress)
     pages, edges = await crawler.crawl(on_progress=on_progress)
 
-    ia_results = ia.run_ia_analysis(pages, edges, crawler_start_url(config, pages))
+    start_url_resolved = crawler_start_url(config, pages)
+    ia_results = ia.run_ia_analysis(pages, edges, start_url_resolved)
     content_results = content.run_content_analysis(pages)
     a11y_results = accessibility.run_accessibility_analysis(pages)
     seo_results = seo.run_seo_analysis(pages)
@@ -41,6 +52,18 @@ async def run_audit(
         integration_results, keyword_results, len(pages),
     )
 
+    link_health_results = {"checked": 0, "broken": [], "broken_count": 0}
+    if config.check_external_links and crawler.external_link_targets:
+        progress.note(f"Checking {len(crawler.external_link_targets)} external link(s)…")
+        link_health_results = await link_health.check_external_links(crawler.external_link_targets)
+
+    performance_results = {"sampled": False, "results": [], "avg_performance_score": None}
+    if run_performance:
+        progress.note("Sampling real-world performance via PageSpeed Insights (this can take a while)…")
+        performance_results = await performance.run_performance_analysis(
+            pages, edges, start_url_resolved, api_key=pagespeed_api_key
+        )
+
     progress.status = AuditStatus.DONE
     progress.finished_at = datetime.now(timezone.utc)
 
@@ -53,6 +76,7 @@ async def run_audit(
             "started_at": progress.started_at.isoformat(),
             "finished_at": progress.finished_at.isoformat(),
             "elapsed_seconds": round(progress.elapsed_seconds, 1),
+            "render_js": config.render_js,
         },
         "pages": {
             url: {
@@ -74,6 +98,7 @@ async def run_audit(
                 "rendered_height_estimate": rec.rendered_height_estimate,
                 "script_count": rec.script_count,
                 "external_script_count": rec.external_script_count,
+                "has_screenshot": url in crawler.screenshots,
                 "error": rec.error,
             }
             for url, rec in pages.items()
@@ -86,17 +111,20 @@ async def run_audit(
         "scoring": score_results,
         "keywords": keyword_results,
         "integrations": integration_results,
+        "link_health": link_health_results,
+        "performance": performance_results,
         "heuristics": heuristics_results,
         "heuristics_summary": heuristic_summary(heuristics_results),
         "plain_summary": plain_summary,
         "lead_assessment": lead_assessment,
+        "history": history_records or [],
     }
 
     if with_ai_summary:
         summary = await generate_ai_summary(audit_data)
         audit_data["ai_summary"] = summary
 
-    return audit_data
+    return audit_data, crawler.screenshots
 
 
 def crawler_start_url(config: CrawlConfig, pages: dict) -> str:

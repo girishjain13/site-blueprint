@@ -42,6 +42,10 @@ class StartAuditRequest(BaseModel):
     respect_robots: bool = True
     use_sitemap: bool = True
     include_subdomains: bool = False
+    render_js: bool = False
+    capture_screenshots: bool = False
+    check_external_links: bool = False
+    run_performance: bool = False
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -67,12 +71,16 @@ async def start_audit(req: StartAuditRequest):
         include_subdomains=req.include_subdomains,
         respect_robots=req.respect_robots,
         use_sitemap=req.use_sitemap,
+        render_js=req.render_js,
+        capture_screenshots=req.capture_screenshots and req.render_js,
+        check_external_links=req.check_external_links,
     )
 
     async def task():
         try:
-            result = await run_audit(config, progress)
+            result, _screenshots = await run_audit(config, progress, run_performance=req.run_performance)
             result["audit_id"] = audit_id
+            result["screenshot_paths"] = {}  # live app has no static file route to serve these from yet
             _audits[audit_id]["result"] = result
         except Exception as exc:  # surfaced via /status so the UI doesn't hang
             progress.status = AuditStatus.ERROR
