@@ -1,0 +1,85 @@
+name: Run audit and publish to GitHub Pages
+
+# Manually trigger this from the Actions tab, filling in the target URL.
+# The crawl runs on GitHub's runner (a real Python VM — no browser CORS
+# limits), and the resulting static report is published via GitHub Pages.
+on:
+  workflow_dispatch:
+    inputs:
+      start_url:
+        description: "Site to audit (must include http:// or https://)"
+        required: true
+      max_pages:
+        description: "Max pages to crawl (cap 5000)"
+        required: false
+        default: "150"
+      max_depth:
+        description: "Max crawl depth"
+        required: false
+        default: "12"
+      concurrency:
+        description: "Concurrent requests"
+        required: false
+        default: "8"
+      respect_robots:
+        description: "Respect robots.txt"
+        type: boolean
+        default: true
+      use_sitemap:
+        description: "Seed extra URLs from sitemap.xml"
+        type: boolean
+        default: true
+      include_subdomains:
+        description: "Include subdomains as in-scope"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  audit-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run audit
+        env:
+          START_URL: ${{ inputs.start_url }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          MAX_DEPTH: ${{ inputs.max_depth }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          RESPECT_ROBOTS: ${{ inputs.respect_robots }}
+          USE_SITEMAP: ${{ inputs.use_sitemap }}
+          INCLUDE_SUBDOMAINS: ${{ inputs.include_subdomains }}
+          # Optional — set this as a repo secret to get an AI executive
+          # summary. Leave the secret unset and the report still works.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python run_audit_cli.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: audit-and-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
