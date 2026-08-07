@@ -64,13 +64,32 @@ async def test_crawl_and_analyze(sample_server):
     assert a11y_results["inputs_missing_label"] >= 1  # contact form has unlabeled inputs
 
     seo_results = seo.run_seo_analysis(pages)
-    assert seo_results["pages_ok"] == len(pages)
+    # login.html and pricing.html are intentionally broken links in the
+    # fixture (added to validate feature-matrix/journey-map detection
+    # against real link text without needing real pages behind them)
+    broken_link_count = 2
+    assert seo_results["pages_ok"] == len(pages) - broken_link_count
     assert len(seo_results["title_issues"]) > 0
 
     score_results = scoring.run_scoring(ia_results, content_results, a11y_results, seo_results, len(pages))
     for key in ("ia_health_score", "content_quality_score", "accessibility_score", "seo_score", "ux_maturity_score"):
         assert 0 <= score_results[key] <= 100
     assert score_results["action_plan"], "expected at least one action item given fixture issues"
+
+    from analyzers import feature_matrix, journey
+
+    fm_results = feature_matrix.run_feature_matrix(crawler.feature_hits, [])
+    detected_ids = {row["id"] for row in fm_results["rows"] if row["present"]}
+    for expected in ("search", "login", "newsletter", "faq", "pricing", "blog", "contact_form"):
+        assert expected in detected_ids, f"expected '{expected}' to be detected in the feature matrix fixture"
+
+    jm = journey.build_journey_map(pages, ia_results["click_depths"])
+    prospective = next(j for j in jm["journeys"] if j["id"] == "prospective_customer")
+    stage_status = {s["id"]: s["present"] for s in prospective["stages"]}
+    assert stage_status["awareness"] is True   # blog
+    assert stage_status["consideration"] is True  # about
+    assert stage_status["action"] is True      # contact form
+    assert len(jm["journeys"]) == 4  # prospective customer, job seeker, existing customer, press/investor
 
 
 def test_normalize_url_preserves_trailing_slash_forms():

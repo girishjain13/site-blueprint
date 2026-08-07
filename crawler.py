@@ -14,6 +14,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from analyzers.feature_matrix import scan_page_features
 from analyzers.integrations import match_integrations
 from analyzers.keywords import bigrams, tokenize
 from models import AuditStatus, CrawlProgress, PageRecord
@@ -102,6 +103,8 @@ class AsyncCrawler:
         self.screenshots: dict = {}
         # bounded external-link health check (see analyzers/link_health.py)
         self.external_link_targets: dict = {}  # url -> set of internal pages that link to it
+        # website feature matrix (see analyzers/feature_matrix.py)
+        self.feature_hits: dict = {}  # feature id -> set of page urls
 
     async def crawl(self, on_progress: Optional[Callable[[], Awaitable[None]]] = None):
         cfg = self.config
@@ -268,6 +271,12 @@ class AsyncCrawler:
         return len([seg for seg in path.split("/") if seg])
 
     def _parse_html(self, record: PageRecord, html: str, queue: deque, depth: int):
+        # feature matrix scan happens on the raw HTML before any parsing —
+        # cheap regex/substring checks, same "scan once, discard text"
+        # pattern as keyword/integration tallying
+        for feature_id in scan_page_features(record.url, html):
+            self.feature_hits.setdefault(feature_id, set()).add(record.url)
+
         # html.parser (stdlib) instead of lxml — no compiled C extension to
         # build, which has repeatedly been a source of platform-specific
         # deployment failures (missing libxml2/libxslt dev headers, no

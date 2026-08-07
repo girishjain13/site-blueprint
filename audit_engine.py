@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
-from analyzers import accessibility, content, ia, integrations, keywords, link_health, performance, scoring, seo
+from analyzers import accessibility, content, feature_matrix, ia, integrations, journey, keywords, link_health, performance, scoring, seo
 from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary
 from crawler import AsyncCrawler, CrawlConfig
@@ -45,6 +45,10 @@ async def run_audit(
     integration_results = integrations.run_integration_analysis(
         crawler.integration_hits, crawler.unrecognized_script_domains, crawler.all_external_scripts, pages, len(pages)
     )
+    feature_matrix_results = feature_matrix.run_feature_matrix(
+        crawler.feature_hits, integration_results["detected"]
+    )
+    journey_map = journey.build_journey_map(pages, ia_results["click_depths"])
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
     lead_assessment = build_lead_assessment(
@@ -111,6 +115,8 @@ async def run_audit(
         "scoring": score_results,
         "keywords": keyword_results,
         "integrations": integration_results,
+        "feature_matrix": feature_matrix_results,
+        "journey_map": journey_map,
         "link_health": link_health_results,
         "performance": performance_results,
         "heuristics": heuristics_results,

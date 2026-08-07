@@ -256,6 +256,31 @@
   </div>
 
   <div class="section">
+    <div class="section-head"><h2>Feature Matrix</h2><div class="desc">A checklist of common website features detected from the actual markup crawled — search, login, e-commerce, and so on. "Not detected" means the pattern this tool checks for wasn't found; worth a manual double-check before treating it as confirmed absent, especially for anything gated behind a login.</div></div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <div class="stat"><div class="v">{{ data.feature_matrix.present_count }} / {{ data.feature_matrix.total_count }}</div><div class="l">Features detected</div></div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Feature</th><th>Status</th><th>Found on</th></tr></thead>
+        <tbody>
+          {% for row in data.feature_matrix.rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td>
+              {% if row.present %}<span class="tag ok">detected</span>{% else %}<span class="tag muted">not detected</span>{% endif %}
+            </td>
+            <td class="small-dim">
+              {% if row.page_count %}{{ row.page_count }} page(s){% elif row.present %}yes{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-head"><h2>Site Structure</h2><div class="desc">How the site is organized, and how many clicks it takes to reach each page from the homepage.</div></div>
     <div class="chart-grid">
       <div class="chart-box">
@@ -273,6 +298,46 @@
       <div class="stat"><div class="v">{{ data.ia.avg_click_depth }}</div><div class="l">Avg click depth</div></div>
       <div class="stat"><div class="v">{{ data.ia.pages_over_3_clicks }}</div><div class="l">Pages &gt;3 clicks deep</div></div>
     </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Inferred User Journey Maps</h2><div class="desc">
+      Not real behavioral data — a crawler has no access to analytics or session recordings. This infers where each
+      persona's goal-driven path most likely lives in the site's actual structure, and how many clicks it takes to
+      reach each stage. Worth validating against real analytics if you have them. A persona with little or no
+      presence likely just isn't a priority for this site — that's itself a useful signal, not a failure.
+    </div></div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <div class="stat"><div class="v">{{ data.journey_map.journeys_with_any_presence }} / {{ data.journey_map.journeys_total }}</div><div class="l">Personas with any presence</div></div>
+    </div>
+    {% for journey in data.journey_map.journeys %}
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+        <h3 style="font-size:16px;">{{ journey.name }}</h3>
+        <span class="small-dim">{{ journey.stages_present }} / {{ journey.stages_total }} stages found</span>
+      </div>
+      <p class="small-dim" style="margin:0 0 12px;">{{ journey.description }}</p>
+      {% for stage in journey.stages %}
+      <div class="action-item">
+        <span class="pill {{ 'low' if stage.present else 'high' }}">{{ 'found' if stage.present else 'missing' }}</span>
+        <span class="action-area">{{ stage.name }}</span>
+        <span style="flex:1;">
+          {{ stage.description }}
+          {% if stage.present %}
+            <br><span class="small-dim">{{ stage.page_count }} page(s) · closest example: {{ stage.example_url }} ({{ stage.click_depth }} click{{ 's' if stage.click_depth != 1 }} from home)</span>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      {% if journey.notes %}
+      <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+        {% for note in journey.notes %}
+        <p class="small-dim" style="margin:0 0 8px;">{{ note }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
 
   <div class="section">

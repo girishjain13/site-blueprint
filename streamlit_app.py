@@ -141,7 +141,7 @@ if data:
 
     tabs = st.tabs([
         "Overview", "Heuristics & Action Plan", "Content & Keywords",
-        "Integrations", "Site Structure", "Page Inventory", "Exports",
+        "Integrations & Features", "Journey Map", "Site Structure", "Page Inventory", "Exports",
     ])
 
     # ---------------- Overview ----------------
@@ -256,8 +256,52 @@ if data:
             st.caption("Other scripts found (unrecognized)")
             st.dataframe(pd.DataFrame(integ["other_scripts"]), use_container_width=True)
 
-    # ---------------- Site Structure ----------------
+        st.subheader("Feature Matrix")
+        st.caption(
+            "Common website features detected from the actual markup crawled. "
+            "\"Not detected\" means the pattern wasn't found — worth a manual check "
+            "before treating it as confirmed absent, especially anything behind a login."
+        )
+        fm = data.get("feature_matrix", {})
+        if fm.get("rows"):
+            st.metric("Features detected", f"{fm['present_count']} / {fm['total_count']}")
+            fm_df = pd.DataFrame(fm["rows"])[["name", "present", "page_count"]]
+            fm_df.columns = ["Feature", "Detected", "Pages"]
+            st.dataframe(fm_df, use_container_width=True)
+
+    # ---------------- Journey Map ----------------
     with tabs[4]:
+        st.caption(
+            "Not real behavioral data — a crawler has no access to analytics or session "
+            "recordings. This infers where each persona's goal-driven path most likely lives "
+            "in the site's structure, and how many clicks it takes to reach each stage. Worth "
+            "validating against real analytics. A persona with little presence likely just "
+            "isn't a priority for this site — that's a signal, not a failure."
+        )
+        jm = data.get("journey_map", {})
+        if jm.get("journeys"):
+            st.metric("Personas with any presence", f"{jm['journeys_with_any_presence']} / {jm['journeys_total']}")
+            journey_names = [j["name"] for j in jm["journeys"]]
+            selected = st.selectbox("Persona", journey_names)
+            journey = next(j for j in jm["journeys"] if j["name"] == selected)
+            st.caption(journey["description"])
+            st.write(f"**{journey['stages_present']} / {journey['stages_total']} stages found**")
+            for stage in journey["stages"]:
+                icon = "✅" if stage["present"] else "⚠️"
+                with st.expander(f"{icon} {stage['name']}", expanded=stage["present"]):
+                    st.write(stage["description"])
+                    if stage["present"]:
+                        st.caption(
+                            f"{stage['page_count']} page(s) · closest example: {stage['example_url']} "
+                            f"({stage['click_depth']} click(s) from home)"
+                        )
+                    else:
+                        st.caption("No matching content found for this stage.")
+            for note in journey.get("notes", []):
+                st.info(note)
+
+    # ---------------- Site Structure ----------------
+    with tabs[5]:
         ia = data["ia"]
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Orphan pages", ia["orphan_page_count"])
@@ -284,7 +328,7 @@ if data:
             st.dataframe(pd.DataFrame({"URL": ia["orphan_pages"]}), use_container_width=True)
 
     # ---------------- Page Inventory ----------------
-    with tabs[5]:
+    with tabs[6]:
         pages_df = pd.DataFrame(data["pages"].values())
         search = st.text_input("Filter by URL or title")
         if search:
@@ -294,7 +338,7 @@ if data:
         st.dataframe(pages_df, use_container_width=True, height=500)
 
     # ---------------- Exports ----------------
-    with tabs[6]:
+    with tabs[7]:
         st.write("Download the full results in whichever format you need:")
         c1, c2, c3 = st.columns(3)
         c1.download_button("Download JSON", export_json(data), file_name="audit.json", mime="application/json")

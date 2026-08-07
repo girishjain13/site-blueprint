@@ -186,6 +186,33 @@ def export_xlsx(audit_data: dict) -> bytes:
     ws_int.column_dimensions["F"].width = 34
     ws_int.column_dimensions["G"].width = 14
 
+    # ---- Feature Matrix ----
+    fm = audit_data.get("feature_matrix", {})
+    if fm.get("rows"):
+        ws_fm = wb.create_sheet("Feature Matrix")
+        ws_fm.append(["Feature", "Detected?", "Pages Found On"])
+        for row in fm["rows"]:
+            ws_fm.append([row["name"], "Yes" if row["present"] else "No", row.get("page_count") or ""])
+            if row["present"]:
+                ws_fm.cell(row=ws_fm.max_row, column=2).fill = PatternFill(start_color="E4EFE7", end_color="E4EFE7", fill_type="solid")
+        style_header(ws_fm)
+        autosize(ws_fm, [32, 12, 16])
+
+    # ---- Journey Map ----
+    jm = audit_data.get("journey_map", {})
+    if jm.get("journeys"):
+        ws_jm = wb.create_sheet("Journey Map")
+        ws_jm.append(["Persona", "Stage", "Found?", "Pages", "Closest Example", "Click Depth"])
+        for journey in jm["journeys"]:
+            for s in journey["stages"]:
+                ws_jm.append([
+                    journey["name"], s["name"], "Yes" if s["present"] else "No",
+                    s.get("page_count") or "", s.get("example_url") or "",
+                    s.get("click_depth") if s.get("click_depth") is not None else "",
+                ])
+        style_header(ws_jm)
+        autosize(ws_jm, [24, 22, 10, 8, 46, 12])
+
     # ---- Performance ----
     perf = audit_data.get("performance", {})
     if perf.get("sampled"):
