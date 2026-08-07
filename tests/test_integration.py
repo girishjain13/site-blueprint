@@ -98,3 +98,58 @@ def test_normalize_url_preserves_trailing_slash_forms():
     assert normalize_url("http://x.test/about") == "http://x.test/about"
     assert normalize_url("http://x.test/about#section") == "http://x.test/about"
     assert normalize_url("http://x.test") == "http://x.test/"
+
+
+REDIRECT_SITE_DIR = Path(__file__).parent / "fixtures" / "redirect_site"
+REDIRECT_SITE_PORT = 8124
+
+
+@pytest.fixture(scope="module")
+def redirect_server():
+    """Serves fixtures/redirect_site, 301-redirecting /about -> /about/ —
+    a linked page that only exists at a different URL than the one it was
+    linked from. This is the exact scenario that silently broke orphan
+    detection (see crawler.py's redirect_map): the link graph recorded the
+    edge against the pre-redirect URL, which never matched the page's
+    actual (post-redirect) key, so a perfectly reachable page looked
+    orphaned.
+    """
+    class RedirectHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(REDIRECT_SITE_DIR), **kwargs)
+
+        def do_GET(self):
+            if self.path == "/about":
+                self.send_response(301)
+                self.send_header("Location", "/about/")
+                self.end_headers()
+                return
+            super().do_GET()
+
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("127.0.0.1", REDIRECT_SITE_PORT), RedirectHandler) as httpd:
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        yield f"http://127.0.0.1:{REDIRECT_SITE_PORT}/"
+        httpd.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_redirected_internal_links_are_not_orphaned(redirect_server):
+    from crawler import normalize_url
+
+    config = CrawlConfig(start_url=redirect_server, max_pages=20, concurrency=3, use_sitemap=False, respect_robots=False)
+    progress = CrawlProgress()
+    crawler = AsyncCrawler(config, progress)
+    pages, edges = await crawler.crawl()
+
+    about_url = next(u for u in pages if u.rstrip("/").endswith("about"))
+    # confirm the redirect actually happened, i.e. this test is exercising
+    # the scenario it claims to — if this ever stops being true because the
+    # fixture changed, the rest of the assertions would be vacuous
+    assert crawler.redirect_map, "expected the fixture's /about -> /about/ redirect to be recorded"
+
+    start_norm = normalize_url(redirect_server)
+    ia_results = ia.run_ia_analysis(pages, edges, start_norm)
+    assert ia_results["orphan_page_count"] == 0, "the redirected /about/ page should be reachable, not orphaned"
+    assert about_url not in ia_results["orphan_pages"]

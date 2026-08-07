@@ -86,6 +86,15 @@ class AsyncCrawler:
         self.pages: dict[str, PageRecord] = {}
         self.edges: list[tuple[str, str]] = []  # (from_url, to_url) internal links
         self._seen: set[str] = set()
+        # maps a pre-redirect requested URL -> the final URL it resolved to.
+        # Needed because a link's href is recorded (and queued) BEFORE we
+        # know whether the target redirects — if it does, the page ends up
+        # stored under its final URL while the edge still points at the
+        # original, pre-redirect one. Left unresolved, every such edge
+        # silently fails the `dst in pages` check used for orphan/click-depth
+        # analysis, making perfectly reachable pages look orphaned. Resolved
+        # once, in bulk, at the end of crawl() — see _resolve_redirect().
+        self.redirect_map: dict[str, str] = {}
         self._root_netloc = urlparse(config.start_url).netloc
         # site-wide keyword/phrase counters, built incrementally per page
         # (see analyzers/keywords.py) rather than re-scanning stored text later
@@ -189,7 +198,33 @@ class AsyncCrawler:
                 await renderer.stop()
 
         self.progress.status = AuditStatus.ANALYZING
+        self.edges = self._resolve_edges(self.edges)
         return self.pages, self.edges
+
+    def _resolve_redirect(self, url: str, max_hops: int = 5) -> str:
+        """Follows redirect_map to the final URL a link actually landed on,
+        guarding against a redirect loop with a hop limit.
+        """
+        seen = set()
+        current = url
+        for _ in range(max_hops):
+            nxt = self.redirect_map.get(current)
+            if nxt is None or nxt == current or nxt in seen:
+                return current
+            seen.add(current)
+            current = nxt
+        return current
+
+    def _resolve_edges(self, edges: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        """Rewrites every edge's destination through the redirect map, so a
+        link that was recorded against its pre-redirect URL still correctly
+        points at whichever page it actually landed on (see redirect_map's
+        docstring in __init__ for why this matters for orphan detection).
+        Edges whose resolved destination still isn't a crawled page are
+        genuinely broken/out-of-scope links, not a resolution failure —
+        they're left as-is and simply won't match a page later.
+        """
+        return [(src, self._resolve_redirect(dst)) for src, dst in edges]
 
     async def _fetch_and_parse(
         self,
@@ -222,6 +257,7 @@ class AsyncCrawler:
             if rp.url != url:
                 record.redirected_from = url
                 record.url = rp.url
+                self.redirect_map[url] = rp.url
             record.content_type = "text/html"  # a rendered DOM is always HTML by construction
             if rp.status_code and rp.status_code >= 400:
                 record.error = f"http_{rp.status_code}"
@@ -242,6 +278,7 @@ class AsyncCrawler:
             if str(resp.url) != url:
                 record.redirected_from = url
                 record.url = str(resp.url)
+                self.redirect_map[url] = str(resp.url)
             content_type = resp.headers.get("content-type", "")
             record.content_type = content_type
 

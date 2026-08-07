@@ -6,7 +6,3 @@ openpyxl
 anthropic
 streamlit
 pandas
-<<<<<<< HEAD
-=======
-
->>>>>>> a8be0bb425dda0b36313bab8517b154e1e50b3bd
